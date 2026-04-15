@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "Block Dash"
+version = "1.0.0"
+id = "artifacts/block-dash"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 20524
+
+[services.development]
+run = "pnpm --filter @workspace/block-dash run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/block-dash", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/block-dash", "run", "serve" ]
+
+[services.env]
+PORT = "20524"
+BASE_PATH = "/"

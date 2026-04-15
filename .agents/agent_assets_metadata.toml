@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "ONpWKVXzFzmhiHvNFrZjE"
+uri = "file://artifacts/block-dash/assets/images/icon.png"
+type = "image"
+title = "generated_image"
