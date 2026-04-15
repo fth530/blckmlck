@@ -1,3 +1,19 @@
+/**
+ * GameScreen — Block Dash main gameplay screen.
+ *
+ * Drag-and-drop design:
+ *  - PanResponders are created once per tray slot (via useRef) and read
+ *    current game state from a stateRef — this avoids expensive re-creation
+ *    on every board change while still seeing fresh state.
+ *  - Board absolute position is measured after layout with boardRef.measure(),
+ *    stored in boardLayout ref so coordinate transforms are always up-to-date.
+ *  - Ghost preview centers the piece under the finger (top-left offset by
+ *    half the piece dimensions). We show a full green/red ghost for the entire
+ *    piece shape.
+ *  - On valid drop: piece is placed immediately, ghost cleared, animations
+ *    reset. On invalid drop: spring animation bounces piece back to tray.
+ */
+
 import React, {
   useState,
   useRef,
@@ -7,7 +23,6 @@ import React, {
 } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   PanResponder,
   Dimensions,
@@ -20,7 +35,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-import { BOARD_SIZE, COLORS, CELL_SIZE, PIECE_COLORS } from '../utils/constants';
+import { BOARD_SIZE, COLORS } from '../utils/constants';
 import { canPlacePiece, getBoardCells } from '../utils/gameHelpers';
 import { useGame } from '../context/GameContext';
 import { useHaptics } from '../hooks/useHaptics';
@@ -34,235 +49,264 @@ import { saveGame } from '../utils/storage';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const TRAY_CELL_SIZE = 28;
-const DRAG_SCALE = 1.1;
+// Cell size used in the tray piece display
+const TRAY_CELL_SIZE = 30;
+// How far above finger to float piece while dragging (px)
+const LIFT_OFFSET_Y = 30;
 
-export default function GameScreen({ resume = false }) {
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Convert absolute page coords to board (row, col), centering the piece. */
+function pageToBoard(pageX, pageY, piece, boardLayout) {
+  const { x, y, width } = boardLayout;
+  if (width === 0) return null;
+  const cellSize = width / BOARD_SIZE;
+  const pCols = piece.shape[0].length;
+  const pRows = piece.shape.length;
+
+  // Position of finger relative to board
+  const relX = pageX - x;
+  const relY = pageY - y;
+
+  // Raw cell under finger
+  const rawCol = Math.floor(relX / cellSize);
+  const rawRow = Math.floor(relY / cellSize);
+
+  // Offset to center piece on finger
+  const col = rawCol - Math.floor(pCols / 2);
+  const row = rawRow - Math.floor(pRows / 2);
+
+  return { row, col, cellSize };
+}
+
+/** Build ghost cell list from a board position. */
+function buildGhost(board, piece, row, col) {
+  const valid = canPlacePiece(board, piece, row, col);
+  const cells = getBoardCells(piece)
+    .map(({ r, c }) => ({
+      row: row + r,
+      col: col + c,
+      valid,
+    }))
+    .filter(g => g.row >= 0 && g.row < BOARD_SIZE && g.col >= 0 && g.col < BOARD_SIZE);
+  return { cells, valid };
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
+export default function GameScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { state, placePieceAction, confirmGameOver, clearLastLines, initGame } = useGame();
   const { trigger } = useHaptics();
 
-  const boardRef = useRef(null);
+  // Keep a ref of current state so PanResponder callbacks always see fresh values
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
+
+  const placePieceRef = useRef(placePieceAction);
+  useEffect(() => { placePieceRef.current = placePieceAction; }, [placePieceAction]);
+
+  // Board absolute position — measured after layout
+  const boardViewRef = useRef(null);
   const boardLayout = useRef({ x: 0, y: 0, width: 0, height: 0 });
-  const [cellSize, setCellSize] = useState(CELL_SIZE);
-  const dragState = useRef({
-    active: false,
-    pieceIndex: -1,
-    offsetX: 0,
-    offsetY: 0,
-  });
+  const [boardCellSize, setBoardCellSize] = useState(32);
+  const boardMeasured = useRef(false);
 
-  const piecePositions = useRef([
-    { x: new RNAnimated.Value(0), y: new RNAnimated.Value(0) },
-    { x: new RNAnimated.Value(0), y: new RNAnimated.Value(0) },
-    { x: new RNAnimated.Value(0), y: new RNAnimated.Value(0) },
-  ]);
-
-  const pieceScales = useRef([
+  // Drag animation values (one set per tray slot, created once)
+  const dragX = useRef([
+    new RNAnimated.Value(0),
+    new RNAnimated.Value(0),
+    new RNAnimated.Value(0),
+  ]).current;
+  const dragY = useRef([
+    new RNAnimated.Value(0),
+    new RNAnimated.Value(0),
+    new RNAnimated.Value(0),
+  ]).current;
+  const dragScale = useRef([
     new RNAnimated.Value(1),
     new RNAnimated.Value(1),
     new RNAnimated.Value(1),
-  ]);
+  ]).current;
 
+  // Ghost / UI state
   const [ghostCells, setGhostCells] = useState([]);
-  const [ghostValid, setGhostValid] = useState(false);
-  const [activePieceIndex, setActivePieceIndex] = useState(-1);
+  const [activePieceIdx, setActivePieceIdx] = useState(-1);
   const [particles, setParticles] = useState([]);
   const [showGameOver, setShowGameOver] = useState(false);
-  const trayRef = useRef(null);
-  const trayLayouts = useRef([null, null, null]);
-  const [trayMeasured, setTrayMeasured] = useState(false);
 
-  // Board layout measuring
-  const handleBoardLayout = useCallback(() => {
-    if (boardRef.current) {
-      boardRef.current.measure((fx, fy, w, h, px, py) => {
+  // Track drag in ref to avoid stale closures inside PanResponder
+  const drag = useRef({ active: false, idx: -1 });
+
+  // Measure board absolute position
+  const measureBoard = useCallback(() => {
+    if (!boardViewRef.current) return;
+    boardViewRef.current.measure((fx, fy, w, h, px, py) => {
+      if (w > 0) {
         boardLayout.current = { x: px, y: py, width: w, height: h };
-        const cs = Math.floor(w / BOARD_SIZE);
-        setCellSize(cs);
-      });
-    }
-  }, []);
-
-  // Convert screen coords to board row/col
-  const screenToBoard = useCallback((sx, sy) => {
-    const { x, y, width } = boardLayout.current;
-    const cs = width / BOARD_SIZE;
-    const col = Math.floor((sx - x) / cs);
-    const row = Math.floor((sy - y) / cs);
-    return { row, col };
-  }, []);
-
-  // Show ghost
-  const updateGhost = useCallback((sx, sy, pieceIndex) => {
-    const piece = state.pieces[pieceIndex];
-    if (!piece) return;
-
-    const { row, col } = screenToBoard(sx, sy);
-    const pRows = piece.shape.length;
-    const pCols = piece.shape[0].length;
-    const adjustedRow = row - Math.floor(pRows / 2);
-    const adjustedCol = col - Math.floor(pCols / 2);
-
-    const valid = canPlacePiece(state.board, piece, adjustedRow, adjustedCol);
-    const cells = getBoardCells(piece).map(({ r, c }) => ({
-      row: adjustedRow + r,
-      col: adjustedCol + c,
-      color: piece.color,
-      valid,
-    })).filter(({ row: r, col: c }) => r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE);
-
-    setGhostCells(cells);
-    setGhostValid(valid);
-    return { adjustedRow, adjustedCol, valid };
-  }, [state.board, state.pieces, screenToBoard]);
-
-  // Tray piece positions (measure each slot)
-  const getTrayPieceLayout = useCallback((pieceIndex) => {
-    return new Promise((resolve) => {
-      if (trayLayouts.current[pieceIndex]) {
-        resolve(trayLayouts.current[pieceIndex]);
-        return;
+        const cs = w / BOARD_SIZE;
+        setBoardCellSize(cs);
+        boardMeasured.current = true;
       }
-      resolve({ x: 0, y: 0, width: 100, height: 100 });
     });
   }, []);
 
-  const createPieceResponder = useCallback((pieceIndex) => {
+  const handleBoardLayout = useCallback(() => {
+    // Slight delay to ensure layout has settled
+    requestAnimationFrame(measureBoard);
+  }, [measureBoard]);
+
+  // ─── Animation helpers ─────────────────────────────────────────────────
+
+  const snapBack = useCallback((idx) => {
+    RNAnimated.parallel([
+      RNAnimated.spring(dragX[idx], { toValue: 0, tension: 180, friction: 9, useNativeDriver: true }),
+      RNAnimated.spring(dragY[idx], { toValue: 0, tension: 180, friction: 9, useNativeDriver: true }),
+      RNAnimated.spring(dragScale[idx], { toValue: 1, tension: 220, friction: 10, useNativeDriver: true }),
+    ]).start();
+  }, [dragX, dragY, dragScale]);
+
+  const resetInstant = useCallback((idx) => {
+    dragX[idx].setValue(0);
+    dragY[idx].setValue(0);
+    dragScale[idx].setValue(1);
+  }, [dragX, dragY, dragScale]);
+
+  // ─── Create PanResponders (once per slot) ──────────────────────────────
+
+  const createResponder = useCallback((slotIdx) => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => state.pieces[pieceIndex] !== null,
-      onMoveShouldSetPanResponder: () => state.pieces[pieceIndex] !== null,
-
-      onPanResponderGrant: (evt) => {
-        if (!state.pieces[pieceIndex]) return;
-        const { pageX, pageY } = evt.nativeEvent;
+      onStartShouldSetPanResponder: () => {
+        return !!stateRef.current.pieces[slotIdx];
+      },
+      onMoveShouldSetPanResponder: () => {
+        return !!stateRef.current.pieces[slotIdx];
+      },
+      onPanResponderGrant: () => {
+        const piece = stateRef.current.pieces[slotIdx];
+        if (!piece) return;
+        drag.current = { active: true, idx: slotIdx };
+        setActivePieceIdx(slotIdx);
         trigger('light');
-        dragState.current = {
-          active: true,
-          pieceIndex,
-          startX: pageX,
-          startY: pageY,
-        };
-        setActivePieceIndex(pieceIndex);
 
-        RNAnimated.spring(pieceScales.current[pieceIndex], {
-          toValue: DRAG_SCALE,
-          tension: 200,
-          friction: 6,
+        RNAnimated.spring(dragScale[slotIdx], {
+          toValue: 1.15,
+          tension: 300,
+          friction: 7,
           useNativeDriver: true,
         }).start();
+
+        // Re-measure board position every drag start (handles scroll/resize)
+        if (!boardMeasured.current) measureBoard();
       },
 
       onPanResponderMove: (evt, gs) => {
-        if (!dragState.current.active) return;
+        if (!drag.current.active || drag.current.idx !== slotIdx) return;
+
+        dragX[slotIdx].setValue(gs.dx);
+        // Offset upward so finger doesn't hide the piece
+        dragY[slotIdx].setValue(gs.dy - LIFT_OFFSET_Y);
+
+        // Update ghost
         const { pageX, pageY } = evt.nativeEvent;
+        const piece = stateRef.current.pieces[slotIdx];
+        if (!piece || !boardMeasured.current) return;
 
-        piecePositions.current[pieceIndex].x.setValue(gs.dx);
-        piecePositions.current[pieceIndex].y.setValue(gs.dy);
+        const coords = pageToBoard(pageX, pageY - LIFT_OFFSET_Y, piece, boardLayout.current);
+        if (!coords) return;
 
-        const ghostInfo = updateGhost(pageX, pageY, pieceIndex);
-        if (ghostInfo) {
-          // Haptic on entering valid zone
-        }
+        const { row, col } = coords;
+        const { cells } = buildGhost(stateRef.current.board, piece, row, col);
+        setGhostCells(cells);
       },
 
       onPanResponderRelease: (evt) => {
-        if (!dragState.current.active) return;
+        if (!drag.current.active || drag.current.idx !== slotIdx) return;
+        drag.current.active = false;
+
         const { pageX, pageY } = evt.nativeEvent;
-        dragState.current.active = false;
+        const piece = stateRef.current.pieces[slotIdx];
 
-        const piece = state.pieces[pieceIndex];
-        if (!piece) return;
+        setGhostCells([]);
+        setActivePieceIdx(-1);
 
-        const { row, col } = screenToBoard(pageX, pageY);
-        const pRows = piece.shape.length;
-        const pCols = piece.shape[0].length;
-        const adjustedRow = row - Math.floor(pRows / 2);
-        const adjustedCol = col - Math.floor(pCols / 2);
+        if (!piece || !boardMeasured.current) {
+          snapBack(slotIdx);
+          return;
+        }
 
-        const valid = canPlacePiece(state.board, piece, adjustedRow, adjustedCol);
+        const coords = pageToBoard(pageX, pageY - LIFT_OFFSET_Y, piece, boardLayout.current);
+        if (!coords) {
+          snapBack(slotIdx);
+          return;
+        }
+
+        const { row, col } = coords;
+        const valid = canPlacePiece(stateRef.current.board, piece, row, col);
 
         if (valid) {
           trigger('medium');
-          // Animate snap back
-          RNAnimated.parallel([
-            RNAnimated.spring(piecePositions.current[pieceIndex].x, {
-              toValue: 0, tension: 300, friction: 12, useNativeDriver: true,
-            }),
-            RNAnimated.spring(piecePositions.current[pieceIndex].y, {
-              toValue: 0, tension: 300, friction: 12, useNativeDriver: true,
-            }),
-            RNAnimated.spring(pieceScales.current[pieceIndex], {
-              toValue: 1, tension: 200, friction: 8, useNativeDriver: true,
-            }),
-          ]).start();
+          resetInstant(slotIdx);
 
-          placePieceAction(pieceIndex, adjustedRow, adjustedCol);
+          // Dispatch placement
+          placePieceRef.current(slotIdx, row, col);
 
-          // Particles at board position
+          // Particle burst at center of piece on board
           const { x: bx, y: by, width: bw } = boardLayout.current;
           const cs = bw / BOARD_SIZE;
-          const particleX = bx + (adjustedCol + pCols / 2) * cs;
-          const particleY = by + (adjustedRow + pRows / 2) * cs;
-          const pid = Date.now().toString() + Math.random().toString(36).substr(2, 4);
+          const pCols = piece.shape[0].length;
+          const pRows = piece.shape.length;
+          const particleX = bx + (col + pCols / 2) * cs;
+          const particleY = by + (row + pRows / 2) * cs;
+          const pid = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
           setParticles(prev => [...prev, { id: pid, x: particleX, y: particleY, colors: piece.color.gradient }]);
-          setTimeout(() => setParticles(prev => prev.filter(p => p.id !== pid)), 1000);
+          setTimeout(() => setParticles(prev => prev.filter(p => p.id !== pid)), 1100);
         } else {
           trigger('error');
-          // Animate piece back to tray
-          RNAnimated.parallel([
-            RNAnimated.spring(piecePositions.current[pieceIndex].x, {
-              toValue: 0, tension: 150, friction: 8, useNativeDriver: true,
-            }),
-            RNAnimated.spring(piecePositions.current[pieceIndex].y, {
-              toValue: 0, tension: 150, friction: 8, useNativeDriver: true,
-            }),
-            RNAnimated.spring(pieceScales.current[pieceIndex], {
-              toValue: 1, tension: 200, friction: 8, useNativeDriver: true,
-            }),
-          ]).start();
+          snapBack(slotIdx);
         }
-
-        setGhostCells([]);
-        setActivePieceIndex(-1);
       },
 
       onPanResponderTerminate: () => {
-        RNAnimated.parallel([
-          RNAnimated.spring(piecePositions.current[pieceIndex].x, { toValue: 0, tension: 150, friction: 8, useNativeDriver: true }),
-          RNAnimated.spring(piecePositions.current[pieceIndex].y, { toValue: 0, tension: 150, friction: 8, useNativeDriver: true }),
-          RNAnimated.spring(pieceScales.current[pieceIndex], { toValue: 1, tension: 200, friction: 8, useNativeDriver: true }),
-        ]).start();
-        setGhostCells([]);
-        setActivePieceIndex(-1);
-        dragState.current.active = false;
+        if (drag.current.idx === slotIdx) {
+          drag.current.active = false;
+          setGhostCells([]);
+          setActivePieceIdx(-1);
+          snapBack(slotIdx);
+        }
       },
     });
-  }, [state.pieces, state.board, trigger, updateGhost, placePieceAction, screenToBoard]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Created once — reads state via stateRef
 
-  const responders = useMemo(() => [
-    createPieceResponder(0),
-    createPieceResponder(1),
-    createPieceResponder(2),
-  ], [state.pieces, state.board]);
+  // Create responders once on mount
+  const responders = useRef([
+    createResponder(0),
+    createResponder(1),
+    createResponder(2),
+  ]).current;
 
-  // Game over trigger
+  // ─── Side-effects ──────────────────────────────────────────────────────
+
+  // Game over
   useEffect(() => {
     if (state.isGameOver && !showGameOver) {
-      const timeout = setTimeout(() => {
+      const t = setTimeout(() => {
         trigger('heavy');
         confirmGameOver(state);
         setShowGameOver(true);
-      }, 500);
-      return () => clearTimeout(timeout);
+      }, 600);
+      return () => clearTimeout(t);
     }
   }, [state.isGameOver]);
 
-  // Line clear haptic
+  // Line clear haptic + particles on row/col clears
   useEffect(() => {
     if (state.lastClearedLines) {
-      const total = (state.lastClearedLines.rows?.length || 0) + (state.lastClearedLines.cols?.length || 0);
+      const total =
+        (state.lastClearedLines.rows?.length || 0) +
+        (state.lastClearedLines.cols?.length || 0);
       if (total > 0) trigger('success');
       clearLastLines();
     }
@@ -273,7 +317,9 @@ export default function GameScreen({ resume = false }) {
     if (!state.isGameOver && state.score > 0) {
       saveGame(state);
     }
-  }, [state.score, state.isGameOver]);
+  }, [state.score]);
+
+  // ─── Actions ────────────────────────────────────────────────────────────
 
   const handlePlayAgain = useCallback(() => {
     setShowGameOver(false);
@@ -289,44 +335,50 @@ export default function GameScreen({ resume = false }) {
     router.replace('/');
   }, [router]);
 
+  // ─── Layout ─────────────────────────────────────────────────────────────
+
   const paddingTop = Platform.OS === 'web' ? Math.max(insets.top, 67) : insets.top;
   const paddingBottom = Platform.OS === 'web' ? 34 : insets.bottom;
 
-  // Compute board size that fits the screen
-  const availableHeight = SCREEN_HEIGHT - paddingTop - paddingBottom - 200; // header + tray
-  const availableWidth = SCREEN_WIDTH - 32;
-  const boardDim = Math.min(availableWidth, availableHeight);
+  const trayHeight = TRAY_CELL_SIZE * 5 + 28;
+  const headerH = 72;
+  const comboH = 38;
+  const availH = SCREEN_HEIGHT - paddingTop - headerH - comboH - trayHeight - paddingBottom - 24;
+  const availW = SCREEN_WIDTH - 24;
+  const boardDim = Math.min(availW, availH);
+
+  // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <View style={[styles.container]}>
+    <View style={styles.container}>
       <LinearGradient
-        colors={['#0d0d1a', '#16162e', '#0d0d1a']}
+        colors={['#0d0d1a', '#13132a', '#0d0d1a']}
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Particles */}
+      {/* Particle effects */}
       {particles.map(p => (
         <ParticleEffect key={p.id} x={p.x} y={p.y} colors={p.colors} />
       ))}
 
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────── */}
       <View style={[styles.header, { paddingTop: paddingTop + 8 }]}>
-        <TouchableOpacity onPress={handleBack} style={styles.headerBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Feather name="arrow-left" size={20} color={COLORS.text} />
         </TouchableOpacity>
         <ScoreBoard score={state.score} highScore={state.highScore} />
-        <View style={styles.headerBtn} />
+        <View style={styles.iconBtn} />
       </View>
 
-      {/* Combo indicator */}
+      {/* ── Combo indicator ────────────────────────────────── */}
       <View style={styles.comboRow}>
         <ComboIndicator comboCount={state.comboCount} />
       </View>
 
-      {/* Game board */}
+      {/* ── Board ──────────────────────────────────────────── */}
       <View style={styles.boardContainer}>
         <View
-          ref={boardRef}
+          ref={boardViewRef}
           onLayout={handleBoardLayout}
           style={{ width: boardDim, height: boardDim }}
         >
@@ -338,23 +390,22 @@ export default function GameScreen({ resume = false }) {
         </View>
       </View>
 
-      {/* Piece tray */}
-      <View style={[styles.tray, { paddingBottom: paddingBottom + 16 }]}>
-        {state.pieces.map((piece, idx) => (
-          <TrayPiece
-            key={piece ? piece.instanceId : `empty-${idx}`}
-            piece={piece}
-            pieceIndex={idx}
+      {/* ── Piece tray ─────────────────────────────────────── */}
+      <View style={[styles.tray, { paddingBottom: paddingBottom + 12 }]}>
+        {[0, 1, 2].map(idx => (
+          <TraySlot
+            key={idx}
+            piece={state.pieces[idx]}
             responder={responders[idx]}
-            translateX={piecePositions.current[idx].x}
-            translateY={piecePositions.current[idx].y}
-            scale={pieceScales.current[idx]}
-            isActive={activePieceIndex === idx}
+            translateX={dragX[idx]}
+            translateY={dragY[idx]}
+            scale={dragScale[idx]}
+            isActive={activePieceIdx === idx}
           />
         ))}
       </View>
 
-      {/* Game Over Modal */}
+      {/* ── Game Over ──────────────────────────────────────── */}
       <GameOverModal
         visible={showGameOver}
         score={state.score}
@@ -369,36 +420,39 @@ export default function GameScreen({ resume = false }) {
   );
 }
 
-function TrayPiece({ piece, responder, translateX, translateY, scale, isActive }) {
-  const cellSize = TRAY_CELL_SIZE;
+// ─── TraySlot ───────────────────────────────────────────────────────────────
 
-  if (!piece) {
-    return <View style={styles.traySlot} />;
-  }
-
-  const pieceWidth = piece.shape[0].length * cellSize;
-  const pieceHeight = piece.shape.length * cellSize;
-  const maxDim = 5 * cellSize;
+function TraySlot({ piece, responder, translateX, translateY, scale, isActive }) {
+  const SLOT_DIM = TRAY_CELL_SIZE * 5;
 
   return (
-    <View style={[styles.traySlot]}>
-      <RNAnimated.View
-        {...responder.panHandlers}
-        style={{
-          transform: [{ translateX }, { translateY }, { scale }],
-          zIndex: isActive ? 100 : 1,
-        }}
-      >
-        <View style={[styles.pieceWrapper, { width: maxDim, height: maxDim, alignItems: 'center', justifyContent: 'center' }]}>
-          <BlockPiece
-            piece={piece}
-            cellSize={cellSize}
-          />
-        </View>
-      </RNAnimated.View>
+    <View style={[styles.traySlot, { width: SLOT_DIM, height: SLOT_DIM }]}>
+      {piece ? (
+        <RNAnimated.View
+          {...responder.panHandlers}
+          style={[
+            styles.draggable,
+            {
+              zIndex: isActive ? 999 : 1,
+              elevation: isActive ? 20 : 1,
+              transform: [{ translateX }, { translateY }, { scale }],
+            },
+          ]}
+        >
+          {/* Centering wrapper */}
+          <View style={[styles.pieceCenter, { width: SLOT_DIM, height: SLOT_DIM }]}>
+            <BlockPiece piece={piece} cellSize={TRAY_CELL_SIZE} />
+          </View>
+        </RNAnimated.View>
+      ) : (
+        // Used-up slot — faint placeholder
+        <View style={styles.emptySlot} />
+      )}
     </View>
   );
 }
+
+// ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -409,10 +463,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 4,
   },
-  headerBtn: {
+  iconBtn: {
     width: 38,
     height: 38,
     borderRadius: 12,
@@ -421,31 +475,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   comboRow: {
+    height: 38,
     alignItems: 'center',
-    height: 40,
     justifyContent: 'center',
   },
   boardContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   tray: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-evenly',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: 8,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-    backgroundColor: 'rgba(13,13,26,0.8)',
+    borderTopColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(10,10,24,0.85)',
   },
   traySlot: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 5 * TRAY_CELL_SIZE + 16,
   },
-  pieceWrapper: {},
+  draggable: {
+    position: 'absolute',
+  },
+  pieceCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptySlot: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderStyle: 'dashed',
+  },
 });
