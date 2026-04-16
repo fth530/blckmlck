@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l artifacts/block-dash/src/**/*.js)",
+      "Bash(xargs cat *)",
+      "Bash(grep -E \"\\\\.\\(js|jsx|ts|tsx\\)$\")",
+      "Bash(ls -la src/utils/)",
+      "Bash(ls -la src/hooks/)",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "Bash(node \"c:\\\\Users\\\\ffati\\\\Desktop\\\\Block-Blast-Mania-1\\\\artifacts\\\\block-dash\\\\scripts\\\\generate-sounds.js\")",
+      "Bash(node scripts/generate-sounds.js)"
+    ]
+  }
+}

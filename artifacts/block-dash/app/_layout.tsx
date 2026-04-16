@@ -11,6 +11,7 @@ import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ensureSchemaVersion } from '@/src/utils/storage';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -24,7 +25,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      ensureSchemaVersion().then(() => SplashScreen.hideAsync());
     }
   }, [fontsLoaded, fontError]);
 
@@ -34,11 +35,37 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="game" options={{ headerShown: false, gestureEnabled: false }} />
-            <Stack.Screen name="settings" options={{ headerShown: false, presentation: 'modal' }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: 'fade',
+              animationDuration: 250,
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen
+              name="game"
+              options={{
+                gestureEnabled: false,
+                animation: 'fade_from_bottom',
+                animationDuration: 300,
+              }}
+            />
+            <Stack.Screen
+              name="settings"
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="stats"
+              options={{
+                animation: 'fade_from_bottom',
+                animationDuration: 250,
+              }}
+            />
+            <Stack.Screen name="(tabs)" />
           </Stack>
         </GestureHandlerRootView>
       </ErrorBoundary>
