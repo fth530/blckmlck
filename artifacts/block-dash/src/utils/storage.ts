@@ -41,6 +41,8 @@ const KEYS = {
   TUTORIAL_SEEN: "blockdash_tutorial_seen",
   ACHIEVEMENTS: "blockdash_achievements",
   GAME_HISTORY: "blockdash_game_history",
+  COINS: "blockdash_coins",
+  UNLOCKED_THEMES: "blockdash_unlocked_themes",
 };
 
 export async function getHighScore(): Promise<number> {
@@ -140,11 +142,11 @@ export async function clearSavedGame(): Promise<void> {
 export async function getSettings(): Promise<Settings> {
   try {
     const val = await AsyncStorage.getItem(KEYS.SETTINGS);
-    const defaults: Settings = { haptics: true, sounds: true, colorblind: false, reducedMotion: false };
+    const defaults: Settings = { haptics: true, sounds: true, colorblind: false, reducedMotion: false, activeTheme: 'cosmic', language: 'en' };
     return val ? { ...defaults, ...JSON.parse(val) } : defaults;
   } catch (error) {
     console.error("getSettings error:", error);
-    return { haptics: true, sounds: true, colorblind: false, reducedMotion: false };
+    return { haptics: true, sounds: true, colorblind: false, reducedMotion: false, activeTheme: 'cosmic', language: 'en' };
   }
 }
 
@@ -196,6 +198,41 @@ export async function saveDailyChallengeProgress(challenge: DailyChallenge): Pro
   } catch (error) {
     console.error("saveDailyChallengeProgress error:", error);
   }
+}
+
+// ─── Coins & themes ──────────────────────────────────────────────────────────
+
+export async function getCoins(): Promise<number> {
+  try {
+    const val = await AsyncStorage.getItem(KEYS.COINS);
+    return val ? parseInt(val, 10) : 0;
+  } catch { return 0; }
+}
+
+export async function setCoins(amount: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.COINS, amount.toString());
+  } catch (error) { console.error("setCoins error:", error); }
+}
+
+export async function addCoins(amount: number): Promise<number> {
+  const current = await getCoins();
+  const newTotal = current + amount;
+  await setCoins(newTotal);
+  return newTotal;
+}
+
+export async function getUnlockedThemes(): Promise<string[]> {
+  try {
+    const val = await AsyncStorage.getItem(KEYS.UNLOCKED_THEMES);
+    return val ? JSON.parse(val) : ['cosmic']; // default theme always unlocked
+  } catch { return ['cosmic']; }
+}
+
+export async function saveUnlockedThemes(themes: string[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.UNLOCKED_THEMES, JSON.stringify(themes));
+  } catch (error) { console.error("saveUnlockedThemes error:", error); }
 }
 
 // ─── Game history ─────────────────────────────────────────────────────────────

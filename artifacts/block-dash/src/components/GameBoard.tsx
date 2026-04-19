@@ -21,6 +21,9 @@ interface GameBoardProps {
   clearingRows?: number[];
   clearingCols?: number[];
   colorblind?: boolean;
+  boardBg?: string;
+  cellBorder?: string;
+  cellEmpty?: string;
 }
 
 const GameBoard = memo(function GameBoard({
@@ -30,6 +33,9 @@ const GameBoard = memo(function GameBoard({
   clearingRows = [],
   clearingCols = [],
   colorblind = false,
+  boardBg = COLORS.boardBg,
+  cellBorder = COLORS.cellBorder,
+  cellEmpty = COLORS.cellEmpty,
 }: GameBoardProps) {
   const ghostMap = useMemo(() => {
     const m: Record<string, boolean> = {};
@@ -93,7 +99,13 @@ const GameBoard = memo(function GameBoard({
     <View
       style={[
         styles.board,
-        { width: cs * BOARD_SIZE, height: cs * BOARD_SIZE, borderRadius: cs * 0.35 },
+        {
+          width: cs * BOARD_SIZE,
+          height: cs * BOARD_SIZE,
+          borderRadius: cs * 0.35,
+          backgroundColor: boardBg,
+          borderColor: cellBorder,
+        },
       ]}
       accessibilityRole="grid"
       accessibilityLabel={`Game board, ${BOARD_SIZE} by ${BOARD_SIZE}`}
@@ -119,6 +131,8 @@ const GameBoard = memo(function GameBoard({
               innerSize={inner}
               colorblind={colorblind}
               ghostPulse={ghostPulse}
+              themeCellEmpty={cellEmpty}
+              themeCellBorder={cellBorder}
             />
           );
         })
@@ -140,16 +154,21 @@ interface CellProps {
   innerSize: number;
   colorblind: boolean;
   ghostPulse: Animated.Value;
+  themeCellEmpty: string;
+  themeCellBorder: string;
 }
 
 const Cell = memo(function Cell({
-  r, c, color, isGhost, ghostValid, isClearing, cellSize, innerSize, colorblind, ghostPulse,
+  r, c, color, isGhost, ghostValid, isClearing, cellSize, innerSize, colorblind, ghostPulse, themeCellEmpty, themeCellBorder,
 }: CellProps) {
   const flashAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (isClearing) {
+      // Diagonal wave: cells closer to top-left flash first
+      const staggerDelay = (r + c) * 18;
       Animated.sequence([
+        Animated.delay(staggerDelay),
         Animated.timing(flashAnim, {
           toValue: 2,
           duration: 80,
@@ -257,8 +276,12 @@ const Cell = memo(function Cell({
       accessibilityLabel={a11yLabel}
       style={[
         baseStyle,
-        styles.emptyCell,
-        { borderRadius: Math.max(1, radius * 0.7) },
+        {
+          backgroundColor: themeCellEmpty,
+          borderWidth: 0.5,
+          borderColor: themeCellBorder,
+          borderRadius: Math.max(1, radius * 0.7),
+        },
       ]}
     />
   );

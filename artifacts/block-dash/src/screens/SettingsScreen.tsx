@@ -15,6 +15,8 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../utils/constants';
 import { useSettings } from '../context/SettingsContext';
+import { useHaptics } from '../hooks/useHaptics';
+import { useTranslation } from '../hooks/useTranslation';
 import { resetStats } from '../utils/storage';
 import type { Settings } from '../utils/types';
 
@@ -22,21 +24,29 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { settings, updateSetting } = useSettings();
+  const { trigger } = useHaptics();
+  const { t } = useTranslation();
 
   const paddingTop = Platform.OS === 'web' ? Math.max(insets.top, 67) : insets.top;
 
+  const handleToggle = async <K extends keyof Settings>(key: K, value: Settings[K]) => {
+    trigger('selection');
+    await updateSetting(key, value);
+  };
+
   const handleResetStats = () => {
+    trigger('error');
     Alert.alert(
-      'Reset Stats',
-      'This will clear your high score and all game statistics. This cannot be undone.',
+      t('settings.resetStats'),
+      t('settings.resetConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('settings.cancel'), style: 'cancel' },
         {
-          text: 'Reset',
+          text: t('settings.reset'),
           style: 'destructive',
           onPress: async () => {
             await resetStats();
-            Alert.alert('Stats Reset', 'All stats have been cleared.');
+            Alert.alert(t('settings.resetStats'), t('settings.resetDone'));
           },
         },
       ]
@@ -54,14 +64,14 @@ export default function SettingsScreen() {
 
       <View style={[styles.header, { paddingTop: topPad }]}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => { trigger('light'); router.back(); }}
           style={styles.backBtn}
           accessibilityLabel="Go back"
           accessibilityRole="button"
         >
           <Feather name="arrow-left" size={22} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>SETTINGS</Text>
+        <Text style={styles.headerTitle}>{t('settings.title')}</Text>
         <View style={{ width: 38 }} />
       </View>
 
@@ -72,39 +82,62 @@ export default function SettingsScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <SectionHeader title="GAMEPLAY" />
+        <SectionHeader title={t('settings.gameplay')} />
 
         <SettingRow
           icon="volume-2"
-          label="Sound Effects"
+          label={t('settings.sounds')}
           value={settings.sounds}
-          onToggle={(v) => updateSetting('sounds', v)}
+          onToggle={(v) => handleToggle('sounds', v)}
         />
         <SettingRow
           icon="smartphone"
-          label="Haptic Feedback"
+          label={t('settings.haptics')}
           value={settings.haptics}
-          onToggle={(v) => updateSetting('haptics', v)}
+          onToggle={(v) => handleToggle('haptics', v)}
         />
 
-        <SectionHeader title="ACCESSIBILITY" />
+        <SectionHeader title={t('settings.accessibility')} />
 
         <SettingRow
           icon="eye"
-          label="Colorblind Mode"
-          description="Replaces piece colors with a colorblind-safe palette and adds shape patterns"
+          label={t('settings.colorblind')}
+          description={t('settings.colorblindDesc')}
           value={settings.colorblind}
-          onToggle={(v) => updateSetting('colorblind', v)}
+          onToggle={(v) => handleToggle('colorblind', v)}
         />
         <SettingRow
           icon="minimize-2"
-          label="Reduced Motion"
-          description="Disables animations for motion-sensitive users"
+          label={t('settings.reducedMotion')}
+          description={t('settings.reducedMotionDesc')}
           value={settings.reducedMotion}
-          onToggle={(v) => updateSetting('reducedMotion', v)}
+          onToggle={(v) => handleToggle('reducedMotion', v)}
         />
 
-        <SectionHeader title="DATA" />
+        {/* Language selector */}
+        <View style={styles.row}>
+          <View style={styles.rowLeft}>
+            <View style={styles.iconBox}>
+              <Feather name="globe" size={18} color={COLORS.primaryLight} />
+            </View>
+            <Text style={styles.rowLabel}>{t('settings.language')}</Text>
+          </View>
+          <View style={styles.langSwitch}>
+            {(['en', 'tr'] as const).map((lang) => (
+              <TouchableOpacity
+                key={lang}
+                onPress={() => handleToggle('language', lang)}
+                style={[styles.langBtn, settings.language === lang && styles.langBtnActive]}
+              >
+                <Text style={[styles.langText, settings.language === lang && styles.langTextActive]}>
+                  {lang.toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <SectionHeader title={t('settings.data')} />
 
         <TouchableOpacity
           onPress={handleResetStats}
@@ -116,15 +149,15 @@ export default function SettingsScreen() {
             <View style={[styles.iconBox, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
               <Feather name="trash-2" size={18} color="#ef4444" />
             </View>
-            <Text style={[styles.rowLabel, { color: '#ef4444' }]}>Reset High Scores</Text>
+            <Text style={[styles.rowLabel, { color: '#ef4444' }]}>{t('settings.resetStats')}</Text>
           </View>
           <Feather name="chevron-right" size={18} color="#ef4444" />
         </TouchableOpacity>
 
-        <SectionHeader title="ABOUT" />
+        <SectionHeader title={t('settings.about')} />
         <View style={styles.aboutBox}>
           <Text style={styles.appName}>Block Dash</Text>
-          <Text style={styles.version}>Version 1.0.0</Text>
+          <Text style={styles.version}>{t('settings.version')} 1.0.0</Text>
           <Text style={styles.aboutDesc}>
             A polished block puzzle game. Drop pieces to complete rows and columns.
           </Text>
@@ -254,6 +287,30 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 15,
     flexWrap: 'wrap',
+  },
+  langSwitch: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 10,
+    padding: 2,
+    gap: 2,
+  },
+  langBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  langBtnActive: {
+    backgroundColor: COLORS.primary,
+  },
+  langText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+  },
+  langTextActive: {
+    color: '#fff',
   },
   aboutBox: {
     backgroundColor: 'rgba(255,255,255,0.05)',

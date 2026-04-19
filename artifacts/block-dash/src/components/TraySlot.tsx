@@ -58,6 +58,50 @@ export default function TraySlot({
   const shakeX      = useRef(new Animated.Value(0)).current;
   const glowOp      = useRef(new Animated.Value(0)).current;
   const breatheAnim = useRef(new Animated.Value(1)).current;
+  const spawnScale  = useRef(new Animated.Value(1)).current;
+  const rotateBounce = useRef(new Animated.Value(1)).current;
+  const prevPieceId = useRef<string | undefined>(piece?.instanceId);
+  const prevShapeSig = useRef<string | undefined>(
+    piece ? piece.shape.map((r) => r.join('')).join('|') : undefined
+  );
+
+  // Spawn pop: new piece appears with scale 0→1 spring (staggered per slot)
+  useEffect(() => {
+    if (piece && piece.instanceId !== prevPieceId.current) {
+      prevPieceId.current = piece.instanceId;
+      if (!reducedMotion) {
+        spawnScale.setValue(0);
+        Animated.sequence([
+          Animated.delay(slotIndex * 80),
+          Animated.spring(spawnScale, {
+            toValue: 1,
+            tension: 220,
+            friction: 8,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
+    } else if (!piece) {
+      prevPieceId.current = undefined;
+      spawnScale.setValue(1);
+    }
+  }, [piece?.instanceId]);
+
+  // Rotation bounce: when piece shape changes (rotated in place)
+  useEffect(() => {
+    if (!piece) {
+      prevShapeSig.current = undefined;
+      return;
+    }
+    const sig = piece.shape.map((r) => r.join('')).join('|');
+    if (prevShapeSig.current && prevShapeSig.current !== sig && !reducedMotion) {
+      Animated.sequence([
+        Animated.spring(rotateBounce, { toValue: 1.18, tension: 280, friction: 6, useNativeDriver: true }),
+        Animated.spring(rotateBounce, { toValue: 1, tension: 220, friction: 9, useNativeDriver: true }),
+      ]).start();
+    }
+    prevShapeSig.current = sig;
+  }, [piece?.shape]);
 
   // Game over: shake + glow
   useEffect(() => {
@@ -119,7 +163,10 @@ export default function TraySlot({
                 transform: [
                   { translateX: Animated.add(translateX, shakeX) },
                   { translateY },
-                  { scale: Animated.multiply(scale, breatheAnim) },
+                  { scale: Animated.multiply(
+                      Animated.multiply(Animated.multiply(scale, breatheAnim), spawnScale),
+                      rotateBounce
+                    ) },
                 ],
               },
             ]}

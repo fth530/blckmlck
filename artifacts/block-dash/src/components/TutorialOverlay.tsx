@@ -10,6 +10,8 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "../utils/constants";
+import { useTranslation } from "../hooks/useTranslation";
+import type { TranslationKey } from "../utils/i18n";
 
 const { width: SW } = Dimensions.get("window");
 
@@ -20,42 +22,19 @@ interface TutorialOverlayProps {
 interface Step {
   icon: React.ComponentProps<typeof Feather>["name"];
   iconColor: string;
-  title: string;
-  description: string;
+  titleKey: TranslationKey;
+  descKey: TranslationKey;
 }
 
 const STEPS: Step[] = [
-  {
-    icon: "move",
-    iconColor: "#A29BFE",
-    title: "Drag & Drop",
-    description:
-      "Drag pieces from the tray at the bottom and place them onto the 10\u00D710 board.",
-  },
-  {
-    icon: "columns",
-    iconColor: "#4ECDC4",
-    title: "Clear Lines",
-    description:
-      "Fill an entire row or column to clear it and earn points. Clear multiple lines at once for bonus!",
-  },
-  {
-    icon: "zap",
-    iconColor: "#FFDD59",
-    title: "Build Combos",
-    description:
-      "Clear lines on consecutive turns to build combos. Each combo level multiplies your score up to 4\u00D7!",
-  },
-  {
-    icon: "target",
-    iconColor: "#FF6B81",
-    title: "Daily Challenges",
-    description:
-      "Complete daily goals and maintain your streak. Level up by placing pieces \u2014 the board gets harder!",
-  },
+  { icon: "move",    iconColor: "#A29BFE", titleKey: "tutorial.dragTitle",  descKey: "tutorial.dragDesc" },
+  { icon: "columns", iconColor: "#4ECDC4", titleKey: "tutorial.clearTitle", descKey: "tutorial.clearDesc" },
+  { icon: "zap",     iconColor: "#FFDD59", titleKey: "tutorial.comboTitle", descKey: "tutorial.comboDesc" },
+  { icon: "target",  iconColor: "#FF6B81", titleKey: "tutorial.dailyTitle", descKey: "tutorial.dailyDesc" },
 ];
 
 export default function TutorialOverlay({ onDone }: TutorialOverlayProps) {
+  const { t } = useTranslation();
   const [stepIdx, setStepIdx] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -97,8 +76,8 @@ export default function TutorialOverlay({ onDone }: TutorialOverlayProps) {
         </View>
 
         {/* Text */}
-        <Text style={styles.title}>{step.title}</Text>
-        <Text style={styles.description}>{step.description}</Text>
+        <Text style={styles.title}>{t(step.titleKey)}</Text>
+        <Text style={styles.description}>{t(step.descKey)}</Text>
 
         {/* Dots */}
         <View style={styles.dots}>
@@ -117,7 +96,7 @@ export default function TutorialOverlay({ onDone }: TutorialOverlayProps) {
         <View style={styles.buttons}>
           {!isLast && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipBtn}>
-              <Text style={styles.skipText}>Skip</Text>
+              <Text style={styles.skipText}>{t('tutorial.skip')}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity onPress={animateToNext} style={styles.nextBtnWrap}>
@@ -127,7 +106,7 @@ export default function TutorialOverlay({ onDone }: TutorialOverlayProps) {
               end={{ x: 1, y: 0 }}
               style={styles.nextBtn}
             >
-              <Text style={styles.nextText}>{isLast ? "LET'S GO!" : "Next"}</Text>
+              <Text style={styles.nextText}>{isLast ? t('tutorial.go') : t('tutorial.next')}</Text>
               {!isLast && <Feather name="arrow-right" size={16} color="#fff" />}
             </LinearGradient>
           </TouchableOpacity>

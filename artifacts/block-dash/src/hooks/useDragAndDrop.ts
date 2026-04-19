@@ -37,6 +37,8 @@ interface UseDragAndDropOptions {
   onPlaySound: (name: SoundName) => void;
   /** Fires with the screen-space centre of the placed piece (for score popup) */
   onDropPosition: (x: number, y: number) => void;
+  /** Fires when a tray slot is double-tapped (for rotation) */
+  onDoubleTap?: (pieceIndex: number) => void;
 }
 
 interface UseDragAndDropReturn {
@@ -100,6 +102,7 @@ export function useDragAndDrop({
   onTriggerHaptic,
   onPlaySound,
   onDropPosition,
+  onDoubleTap,
 }: UseDragAndDropOptions): UseDragAndDropReturn {
   const [ghostCells, setGhostCells] = useState<GhostCell[]>([]);
   const [activePieceIdx, setActivePieceIdx] = useState(-1);
@@ -126,6 +129,10 @@ export function useDragAndDrop({
   ]).current;
 
   const drag = useRef({ active: false, idx: -1 });
+  // Double-tap detection: track last tap per slot
+  const lastTap = useRef<{ idx: number; time: number }>({ idx: -1, time: 0 });
+  const DOUBLE_TAP_MS = 300;
+  const TAP_MOVE_THRESHOLD = 8;
   const piecesRef = useRef(pieces);
   useEffect(() => {
     piecesRef.current = pieces;
@@ -232,7 +239,7 @@ export function useDragAndDrop({
           setGhostCells(cells);
         },
 
-        onPanResponderRelease: (evt) => {
+        onPanResponderRelease: (evt, gs) => {
           if (!drag.current.active || drag.current.idx !== slotIdx) return;
           drag.current.active = false;
 
@@ -241,6 +248,22 @@ export function useDragAndDrop({
 
           setGhostCells([]);
           setActivePieceIdx(-1);
+
+          // Tap detection: minimal movement = tap, not drag
+          const isTap = Math.abs(gs.dx) < TAP_MOVE_THRESHOLD && Math.abs(gs.dy) < TAP_MOVE_THRESHOLD;
+          if (isTap && piece && onDoubleTap) {
+            const now = Date.now();
+            if (lastTap.current.idx === slotIdx && now - lastTap.current.time < DOUBLE_TAP_MS) {
+              // Double-tap detected → rotate
+              onDoubleTap(slotIdx);
+              lastTap.current = { idx: -1, time: 0 };
+              snapBack(slotIdx);
+              return;
+            }
+            lastTap.current = { idx: slotIdx, time: now };
+            snapBack(slotIdx);
+            return;
+          }
 
           if (!piece || !boardMeasured.current) {
             snapBack(slotIdx);
@@ -317,6 +340,7 @@ export function useDragAndDrop({
       onPlaySound,
       onDropPosition,
       onPlacePiece,
+      onDoubleTap,
       resetInstant,
       snapBack,
     ],

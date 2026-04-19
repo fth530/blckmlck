@@ -169,6 +169,21 @@ export function getBoardFillRatio(board: Board): number {
   return filled / (BOARD_SIZE * BOARD_SIZE);
 }
 
+/** Rotates a piece shape 90° clockwise. */
+export function rotateShape(shape: (0 | 1)[][]): (0 | 1)[][] {
+  const rows = shape.length;
+  const cols = shape[0].length;
+  const rotated: (0 | 1)[][] = Array.from({ length: cols }, () =>
+    Array(rows).fill(0),
+  );
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      rotated[c][rows - 1 - r] = shape[r][c];
+    }
+  }
+  return rotated;
+}
+
 // ─── Power-up board operations ──────────────────────────────────────────────
 
 /** Clears a 3×3 area centred on (row, col). */

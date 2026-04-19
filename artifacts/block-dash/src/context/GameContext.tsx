@@ -14,9 +14,10 @@ import {
   applyBomb,
   applySweep,
   applyEraser,
+  rotateShape,
 } from '../utils/gameHelpers';
 import { getThreeRandomPieces, getSmartPieces } from '../utils/pieces';
-import { updateStats, saveGame, clearSavedGame, addGameToHistory } from '../utils/storage';
+import { updateStats, saveGame, clearSavedGame, addGameToHistory, addCoins } from '../utils/storage';
 import type { GameHistoryEntry } from '../utils/types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ type GameAction =
   | { type: 'SET_HIGH_SCORE'; highScore: number }
   | { type: 'PLACE_PIECE'; pieceIndex: number; row: number; col: number }
   | { type: 'USE_POWER_UP'; powerUp: PowerUpType; row: number; col: number }
+  | { type: 'ROTATE_PIECE'; pieceIndex: number }
   | { type: 'TIME_UP' }
   | { type: 'UNDO' }
   | { type: 'CLEAR_LAST_LINES' }
@@ -64,6 +66,7 @@ interface GameContextValue {
   setHighScore: (highScore: number) => void;
   placePieceAction: (pieceIndex: number, row: number, col: number) => Promise<void>;
   usePowerUp: (powerUp: PowerUpType, row: number, col: number) => void;
+  rotatePiece: (pieceIndex: number) => void;
   timeUp: () => void;
   undo: () => void;
   confirmGameOver: (finalState: GameState) => Promise<void>;
@@ -211,6 +214,27 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
       return { ...state, board: newBoard, powerUps: newPowerUps, isGameOver };
     }
+    case 'ROTATE_PIECE': {
+      const { pieceIndex } = action;
+      const piece = state.pieces[pieceIndex];
+      if (!piece || state.isGameOver) return state;
+
+      const rotatedShape = rotateShape(piece.shape);
+      const rotatedPiece = {
+        ...piece,
+        shape: rotatedShape,
+        instanceId: piece.instanceId + '_r',
+      };
+      const newPieces = [...state.pieces];
+      newPieces[pieceIndex] = rotatedPiece;
+
+      // Rotation may save you from game over (zen mode never ends anyway)
+      const isGameOver = state.mode === 'zen'
+        ? false
+        : !canAnyPieceFit(state.board, newPieces);
+
+      return { ...state, pieces: newPieces, isGameOver };
+    }
     case 'TIME_UP': {
       if (state.mode !== 'timed' || state.isGameOver) return state;
       return { ...state, isGameOver: true };
@@ -273,6 +297,10 @@ export function GameProvider({ children, initialHighScore = 0 }: GameProviderPro
     dispatch({ type: 'USE_POWER_UP', powerUp, row, col });
   }, []);
 
+  const rotatePiece = useCallback((pieceIndex: number) => {
+    dispatch({ type: 'ROTATE_PIECE', pieceIndex });
+  }, []);
+
   const timeUp = useCallback(() => {
     dispatch({ type: 'TIME_UP' });
   }, []);
@@ -287,6 +315,10 @@ export function GameProvider({ children, initialHighScore = 0 }: GameProviderPro
       combo: finalState.maxCombo,
       lines: finalState.linesCleared,
     });
+
+    // Award coins (score / 10)
+    const earnedCoins = Math.floor(finalState.score / 10);
+    if (earnedCoins > 0) await addCoins(earnedCoins);
 
     // Save to game history
     const entry: GameHistoryEntry = {
@@ -325,6 +357,7 @@ export function GameProvider({ children, initialHighScore = 0 }: GameProviderPro
         setHighScore,
         placePieceAction,
         usePowerUp,
+        rotatePiece,
         timeUp,
         undo,
         confirmGameOver,

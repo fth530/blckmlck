@@ -15,9 +15,11 @@ import { useRouter } from 'expo-router';
 import FloatingBlock from '../components/FloatingBlock';
 import DailyChallengeCard from '../components/DailyChallengeCard';
 import { COLORS, PIECE_COLORS } from '../utils/constants';
-import { getStats, loadGame } from '../utils/storage';
+import { getStats, loadGame, getCoins } from '../utils/storage';
 import { useDailyChallenge } from '../hooks/useDailyChallenge';
 import { useAchievements } from '../hooks/useAchievements';
+import { useHaptics } from '../hooks/useHaptics';
+import { useTranslation } from '../hooks/useTranslation';
 import { ALL_ACHIEVEMENTS, TIER_COLORS } from '../utils/achievements';
 import type { Stats } from '../utils/types';
 
@@ -55,6 +57,9 @@ export default function HomeScreen() {
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const [stats, setStats] = useState<Stats>(DEFAULT_STATS);
   const [hasSavedGame, setHasSavedGame] = useState(false);
+  const [coins, setCoins] = useState(0);
+  const { trigger } = useHaptics();
+  const { t } = useTranslation();
   const { challenge, streak, reload: reloadChallenge } = useDailyChallenge();
   const { unlocked, total: totalAchievements, reload: reloadAch } = useAchievements();
 
@@ -63,6 +68,7 @@ export default function HomeScreen() {
     loadGame().then((g) => setHasSavedGame(!!g));
     reloadChallenge();
     reloadAch();
+    getCoins().then(setCoins);
 
     Animated.parallel([
       Animated.timing(titleOpacity, {
@@ -102,20 +108,29 @@ export default function HomeScreen() {
   }, []);
 
   const handlePlay = useCallback((mode: string = 'classic') => {
+    trigger('light');
     router.push(`/game?mode=${mode}`);
-  }, [router]);
+  }, [router, trigger]);
 
   const handleContinue = useCallback(() => {
+    trigger('light');
     router.push('/game?resume=true');
-  }, [router]);
+  }, [router, trigger]);
 
   const handleSettings = useCallback(() => {
+    trigger('selection');
     router.push('/settings');
-  }, [router]);
+  }, [router, trigger]);
 
   const handleStats = useCallback(() => {
+    trigger('selection');
     router.push('/stats');
-  }, [router]);
+  }, [router, trigger]);
+
+  const handleShop = useCallback(() => {
+    trigger('selection');
+    router.push('/shop');
+  }, [router, trigger]);
 
   const paddingTop = Platform.OS === 'web' ? Math.max(insets.top, 67) : insets.top;
 
@@ -131,6 +146,15 @@ export default function HomeScreen() {
       ))}
 
       <View style={[styles.topButtons, { top: paddingTop + 16 }]}>
+        <TouchableOpacity
+          onPress={handleShop}
+          style={styles.coinBtn}
+          accessibilityLabel="Shop"
+          accessibilityRole="button"
+        >
+          <Text style={styles.coinEmoji}>🪙</Text>
+          <Text style={styles.coinCount}>{coins.toLocaleString()}</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={handleStats}
           style={styles.topBtn}
@@ -157,7 +181,7 @@ export default function HomeScreen() {
             alignItems: 'center',
           }}
         >
-          <Text style={styles.subtitle}>PUZZLE GAME</Text>
+          <Text style={styles.subtitle}>{t('home.subtitle')}</Text>
           <LinearGradient
             colors={['#A29BFE', '#6C5CE7', '#4ECDC4']}
             start={{ x: 0, y: 0 }}
@@ -182,7 +206,7 @@ export default function HomeScreen() {
             style={styles.highScoreGrad}
           >
             <Feather name="star" size={14} color="#FFDD59" />
-            <Text style={styles.highScoreLabel}>BEST SCORE</Text>
+            <Text style={styles.highScoreLabel}>{t('home.bestScore')}</Text>
             <Text style={styles.highScoreValue}>{stats.highScore.toLocaleString()}</Text>
           </LinearGradient>
         </Animated.View>
@@ -198,7 +222,7 @@ export default function HomeScreen() {
             >
               <LinearGradient colors={['#6C5CE7', '#A29BFE']} style={styles.modeGrad}>
                 <Feather name="play" size={20} color="#fff" />
-                <Text style={styles.modeLabel}>Classic</Text>
+                <Text style={styles.modeLabel}>{t('home.classic')}</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -210,7 +234,7 @@ export default function HomeScreen() {
             >
               <LinearGradient colors={['#4ECDC4', '#2C9B7B']} style={styles.modeGrad}>
                 <Feather name="sun" size={20} color="#fff" />
-                <Text style={styles.modeLabel}>Zen</Text>
+                <Text style={styles.modeLabel}>{t('home.zen')}</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -222,7 +246,7 @@ export default function HomeScreen() {
             >
               <LinearGradient colors={['#FF9F43', '#E55D2B']} style={styles.modeGrad}>
                 <Feather name="clock" size={20} color="#fff" />
-                <Text style={styles.modeLabel}>Timed</Text>
+                <Text style={styles.modeLabel}>{t('home.timed')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -239,21 +263,21 @@ export default function HomeScreen() {
                 style={[styles.playBtn, styles.continueBtn]}
               >
                 <Feather name="rotate-ccw" size={18} color="#4ECDC4" />
-                <Text style={[styles.playBtnText, { color: '#4ECDC4' }]}>CONTINUE</Text>
+                <Text style={[styles.playBtnText, { color: '#4ECDC4' }]}>{t('home.continue')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           )}
         </Animated.View>
 
         <Animated.View style={[styles.statsContainer, { opacity: contentOpacity }]}>
-          <StatItem label="GAMES" value={stats.gamesPlayed} />
+          <StatItem label={t('home.games')} value={stats.gamesPlayed} />
           <View style={styles.statDivider} />
-          <StatItem label="LINES" value={stats.totalLines} />
+          <StatItem label={t('home.lines')} value={stats.totalLines} />
           <View style={styles.statDivider} />
-          <StatItem label="COMBO" value={`×${stats.bestCombo}`} />
+          <StatItem label={t('home.combo')} value={`×${stats.bestCombo}`} />
           <View style={styles.statDivider} />
           <StatItem
-            label="STREAK"
+            label={t('home.streak')}
             value={streak.currentStreak > 0 ? `🔥${streak.currentStreak}` : '—'}
           />
         </Animated.View>
@@ -267,7 +291,7 @@ export default function HomeScreen() {
         {/* Achievement showcase */}
         <Animated.View style={[styles.achSection, { opacity: contentOpacity }]}>
           <View style={styles.achHeader}>
-            <Text style={styles.achTitle}>ACHIEVEMENTS</Text>
+            <Text style={styles.achTitle}>{t('home.achievements')}</Text>
             <Text style={styles.achCount}>{unlocked.length}/{totalAchievements}</Text>
           </View>
           <View style={styles.achGrid}>
@@ -342,6 +366,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
+  coinBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,215,0,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.2)',
+  },
+  coinEmoji: { fontSize: 14 },
+  coinCount: { fontSize: 13, fontWeight: '800', color: '#FFD700' },
   content: {
     flex: 1,
     alignItems: 'center',

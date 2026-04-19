@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { COLORS } from "../utils/constants";
+import { useTranslation } from "../hooks/useTranslation";
 import type { PowerUpType, PowerUps } from "../utils/types";
 
 interface PowerUpBarProps {
@@ -13,17 +14,17 @@ interface PowerUpBarProps {
 interface ButtonDef {
   type: PowerUpType;
   icon: React.ComponentProps<typeof Feather>["name"];
-  label: string;
   color: string;
 }
 
 const BUTTONS: ButtonDef[] = [
-  { type: "bomb",   icon: "target",  label: "Bomb",   color: "#FF6B6B" },
-  { type: "sweep",  icon: "plus",    label: "Sweep",  color: "#4ECDC4" },
-  { type: "eraser", icon: "x",       label: "Eraser", color: "#FFDD59" },
+  { type: "bomb",   icon: "target", color: "#FF6B6B" },
+  { type: "sweep",  icon: "plus",   color: "#4ECDC4" },
+  { type: "eraser", icon: "x",      color: "#FFDD59" },
 ];
 
 export default function PowerUpBar({ powerUps, activeMode, onSelect }: PowerUpBarProps) {
+  const { t } = useTranslation();
   const hasAny = powerUps.bomb + powerUps.sweep + powerUps.eraser > 0;
   if (!hasAny && !activeMode) return null;
 
@@ -44,7 +45,7 @@ export default function PowerUpBar({ powerUps, activeMode, onSelect }: PowerUpBa
               isActive && { backgroundColor: btn.color + "25", borderColor: btn.color + "55" },
               disabled && styles.btnDisabled,
             ]}
-            accessibilityLabel={`${btn.label} power-up, ${count} remaining`}
+            accessibilityLabel={`${t(('powerup.' + btn.type) as any)} power-up, ${count} remaining`}
           >
             <Feather
               name={btn.icon}
@@ -61,7 +62,7 @@ export default function PowerUpBar({ powerUps, activeMode, onSelect }: PowerUpBa
       })}
 
       {activeMode && (
-        <Text style={styles.hint}>Tap a cell on the board</Text>
+        <Text style={styles.hint}>{t('powerup.hint')}</Text>
       )}
     </View>
   );

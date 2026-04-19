@@ -1,11 +1,11 @@
 import React from 'react';
-import StatsScreen from '@/src/screens/StatsScreen';
 import { SettingsProvider } from '@/src/context/SettingsContext';
+import ShopScreen from '@/src/screens/ShopScreen';
 
-export default function StatsRoute() {
+export default function ShopRoute() {
   return (
     <SettingsProvider>
-      <StatsScreen />
+      <ShopScreen />
     </SettingsProvider>
   );
 }

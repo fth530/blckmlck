@@ -13,17 +13,21 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../utils/constants';
 import { getStats, getGameHistory, getStreakData } from '../utils/storage';
+import { useHaptics } from '../hooks/useHaptics';
+import { useTranslation } from '../hooks/useTranslation';
 import type { Stats, GameHistoryEntry, StreakData } from '../utils/types';
 
-const MODE_LABELS: Record<string, { label: string; color: string }> = {
-  classic: { label: 'Classic', color: '#A29BFE' },
-  zen:     { label: 'Zen',     color: '#4ECDC4' },
-  timed:   { label: 'Timed',   color: '#FF9F43' },
+const MODE_COLORS: Record<string, string> = {
+  classic: '#A29BFE',
+  zen:     '#4ECDC4',
+  timed:   '#FF9F43',
 };
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { trigger } = useHaptics();
+  const { t } = useTranslation();
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<GameHistoryEntry[]>([]);
   const [streak, setStreak] = useState<StreakData | null>(null);
@@ -56,13 +60,13 @@ export default function StatsScreen() {
 
       <View style={[styles.header, { paddingTop: paddingTop + 16 }]}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => { trigger('light'); router.back(); }}
           style={styles.backBtn}
           accessibilityLabel="Go back"
         >
           <Feather name="arrow-left" size={22} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>STATISTICS</Text>
+        <Text style={styles.headerTitle}>{t('stats.title')}</Text>
         <View style={{ width: 38 }} />
       </View>
 
@@ -76,19 +80,19 @@ export default function StatsScreen() {
         {/* Summary cards */}
         {stats && (
           <View style={styles.summaryRow}>
-            <SummaryCard label="High Score" value={stats.highScore.toLocaleString()} icon="star" color="#FFDD59" />
-            <SummaryCard label="Games" value={stats.gamesPlayed.toString()} icon="play" color="#A29BFE" />
+            <SummaryCard label={t('stats.highScore')} value={stats.highScore.toLocaleString()} icon="star" color="#FFDD59" />
+            <SummaryCard label={t('home.games')} value={stats.gamesPlayed.toString()} icon="play" color="#A29BFE" />
           </View>
         )}
         {stats && streak && (
           <View style={styles.summaryRow}>
-            <SummaryCard label="Total Lines" value={stats.totalLines.toLocaleString()} icon="layers" color="#4ECDC4" />
-            <SummaryCard label="Best Combo" value={`×${stats.bestCombo}`} icon="zap" color="#FF9F43" />
+            <SummaryCard label={t('stats.totalLines')} value={stats.totalLines.toLocaleString()} icon="layers" color="#4ECDC4" />
+            <SummaryCard label={t('stats.bestCombo')} value={`×${stats.bestCombo}`} icon="zap" color="#FF9F43" />
           </View>
         )}
         <View style={styles.summaryRow}>
-          <SummaryCard label="Avg Score" value={avgScore.toLocaleString()} icon="bar-chart-2" color="#FF6B81" />
-          <SummaryCard label="Avg Lines" value={avgLines.toString()} icon="minus" color="#18DCFF" />
+          <SummaryCard label={t('stats.avgScore')} value={avgScore.toLocaleString()} icon="bar-chart-2" color="#FF6B81" />
+          <SummaryCard label={t('stats.avgLines')} value={avgLines.toString()} icon="minus" color="#18DCFF" />
         </View>
 
         {/* Streak */}
@@ -96,22 +100,25 @@ export default function StatsScreen() {
           <View style={styles.streakRow}>
             <Text style={styles.streakFire}>🔥</Text>
             <Text style={styles.streakText}>
-              Current streak: {streak.currentStreak} day{streak.currentStreak !== 1 ? 's' : ''}
+              {streak.currentStreak === 1
+                ? t('stats.currentStreak', { n: streak.currentStreak })
+                : t('stats.currentStreakPlural', { n: streak.currentStreak })}
             </Text>
             <Text style={styles.streakBest}>
-              Best: {streak.longestStreak}
+              {t('stats.best', { n: streak.longestStreak })}
             </Text>
           </View>
         )}
 
         {/* Top 10 Leaderboard */}
-        <Text style={styles.sectionTitle}>TOP 10 GAMES</Text>
+        <Text style={styles.sectionTitle}>{t('stats.top10')}</Text>
 
         {top10.length === 0 ? (
-          <Text style={styles.emptyText}>No games played yet. Go play!</Text>
+          <Text style={styles.emptyText}>{t('stats.empty')}</Text>
         ) : (
           top10.map((game, i) => {
-            const m = MODE_LABELS[game.mode] ?? MODE_LABELS.classic;
+            const mColor = MODE_COLORS[game.mode] ?? MODE_COLORS.classic;
+            const mLabel = t(('home.' + game.mode) as any);
             const d = new Date(game.date);
             const dateStr = `${d.getDate()}/${d.getMonth() + 1}`;
             return (
@@ -120,12 +127,12 @@ export default function StatsScreen() {
                 <View style={styles.rowMain}>
                   <Text style={styles.rowScore}>{game.score.toLocaleString()}</Text>
                   <Text style={styles.rowSub}>
-                    {game.linesCleared} lines · ×{game.maxCombo} combo · LVL {game.level}
+                    {game.linesCleared} {t('home.lines').toLowerCase()} · ×{game.maxCombo} {t('game.combo').toLowerCase()} · LVL {game.level}
                   </Text>
                 </View>
                 <View style={styles.rowRight}>
-                  <View style={[styles.modeBadge, { backgroundColor: m.color + '22', borderColor: m.color + '44' }]}>
-                    <Text style={[styles.modeText, { color: m.color }]}>{m.label}</Text>
+                  <View style={[styles.modeBadge, { backgroundColor: mColor + '22', borderColor: mColor + '44' }]}>
+                    <Text style={[styles.modeText, { color: mColor }]}>{mLabel}</Text>
                   </View>
                   <Text style={styles.rowDate}>{dateStr}</Text>
                 </View>
@@ -137,17 +144,18 @@ export default function StatsScreen() {
         {/* Recent games */}
         {history.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>RECENT GAMES</Text>
+            <Text style={styles.sectionTitle}>{t('stats.recent')}</Text>
             {history.slice(0, 10).map((game, i) => {
-              const m = MODE_LABELS[game.mode] ?? MODE_LABELS.classic;
+              const mColor = MODE_COLORS[game.mode] ?? MODE_COLORS.classic;
+              const mLabel = t(('home.' + game.mode) as any);
               const d = new Date(game.date);
               const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
               const dateStr = `${d.getDate()}/${d.getMonth() + 1} ${timeStr}`;
               return (
                 <View key={`recent-${game.date}-${i}`} style={styles.recentRow}>
                   <Text style={styles.recentScore}>{game.score.toLocaleString()}</Text>
-                  <Text style={styles.recentSub}>{game.linesCleared} lines</Text>
-                  <Text style={[styles.recentMode, { color: m.color }]}>{m.label}</Text>
+                  <Text style={styles.recentSub}>{game.linesCleared} {t('home.lines').toLowerCase()}</Text>
+                  <Text style={[styles.recentMode, { color: mColor }]}>{mLabel}</Text>
                   <Text style={styles.recentDate}>{dateStr}</Text>
                 </View>
               );

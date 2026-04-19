@@ -59,6 +59,13 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="shop"
+              options={{
+                animation: 'fade_from_bottom',
+                animationDuration: 250,
+              }}
+            />
+            <Stack.Screen
               name="stats"
               options={{
                 animation: 'fade_from_bottom',

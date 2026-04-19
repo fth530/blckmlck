@@ -110,11 +110,30 @@ export interface PowerUps {
   eraser: number;
 }
 
+export type ThemeId = string;
+
+export interface BoardTheme {
+  id: ThemeId;
+  name: string;
+  price: number;             // 0 = free
+  bgGradient: [string, string, string];
+  boardBg: string;
+  cellBorder: string;
+  cellEmpty: string;
+  accent: string;
+  accentLight: string;
+  trayBg: string;
+}
+
+export type Language = 'en' | 'tr';
+
 export interface Settings {
   haptics: boolean;
   sounds: boolean;
   colorblind: boolean;
   reducedMotion: boolean;
+  activeTheme: ThemeId;
+  language: Language;
 }
 
 export type HapticType =

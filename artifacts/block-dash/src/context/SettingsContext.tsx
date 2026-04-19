@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { Settings } from '../utils/types';
 import { getSettings, saveSettings } from '../utils/storage';
+import { detectSystemLanguage } from '../utils/i18n';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,8 @@ const DEFAULT_SETTINGS: Settings = {
   sounds: true,
   colorblind: false,
   reducedMotion: false,
+  activeTheme: 'cosmic',
+  language: detectSystemLanguage(),
 };
 
 // ─── Provider ────────────────────────────────────────────────────────────────

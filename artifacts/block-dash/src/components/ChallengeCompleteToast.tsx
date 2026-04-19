@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { Text, StyleSheet, Animated } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { useTranslation } from "../hooks/useTranslation";
 
 interface ChallengeCompleteToastProps {
   visible: boolean;
@@ -12,6 +13,7 @@ interface ChallengeCompleteToastProps {
  * daily challenge completion, then auto-dismisses after ~2.5s.
  */
 export default function ChallengeCompleteToast({ visible, onDone }: ChallengeCompleteToastProps) {
+  const { t } = useTranslation();
   const translateY = useRef(new Animated.Value(-80)).current;
   const opacity    = useRef(new Animated.Value(0)).current;
 
@@ -41,7 +43,7 @@ export default function ChallengeCompleteToast({ visible, onDone }: ChallengeCom
   return (
     <Animated.View style={[styles.toast, { transform: [{ translateY }], opacity }]}>
       <Feather name="check-circle" size={18} color="#2ED573" />
-      <Text style={styles.text}>Daily Challenge Complete!</Text>
+      <Text style={styles.text}>{t('daily.complete')}</Text>
     </Animated.View>
   );
 }

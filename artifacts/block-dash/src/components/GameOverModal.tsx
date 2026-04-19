@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { COLORS } from '../utils/constants';
+import { useTranslation } from '../hooks/useTranslation';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface GameOverModalProps {
   maxCombo: number;
   onPlayAgain: () => void;
   onHome: () => void;
+  onHaptic?: (type: 'light' | 'selection') => void;
 }
 
 interface StatBoxProps {
@@ -42,9 +44,12 @@ const GameOverModal = memo(function GameOverModal({
   maxCombo,
   onPlayAgain,
   onHome,
+  onHaptic,
 }: GameOverModalProps) {
+  const { t } = useTranslation();
   const scaleAnim    = useRef(new Animated.Value(0)).current;
   const opacityAnim  = useRef(new Animated.Value(0)).current;
+  const slideY       = useRef(new Animated.Value(60)).current;
   const badgePulse   = useRef(new Animated.Value(1)).current;
   const badgeGlow    = useRef(new Animated.Value(0.6)).current;
 
@@ -55,6 +60,12 @@ const GameOverModal = memo(function GameOverModal({
           toValue: 1,
           tension: 60,
           friction: 8,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideY, {
+          toValue: 0,
+          tension: 65,
+          friction: 9,
           useNativeDriver: true,
         }),
         Animated.timing(opacityAnim, {
@@ -85,18 +96,23 @@ const GameOverModal = memo(function GameOverModal({
     } else {
       scaleAnim.setValue(0);
       opacityAnim.setValue(0);
+      slideY.setValue(60);
       badgePulse.setValue(1);
       badgeGlow.setValue(0.6);
     }
   }, [visible]);
 
   const handleShare = async () => {
+    onHaptic?.('light');
     try {
       await Share.share({
         message: `I scored ${score.toLocaleString()} points in Block Dash! Can you beat me? 🎮`,
       });
     } catch {}
   };
+
+  const handlePlayAgainPress = () => { onHaptic?.('light'); onPlayAgain(); };
+  const handleHomePress = () => { onHaptic?.('light'); onHome(); };
 
   return (
     <Modal
@@ -108,10 +124,10 @@ const GameOverModal = memo(function GameOverModal({
     >
       <View style={styles.overlay}>
         <Animated.View
-          style={[styles.modal, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
+          style={[styles.modal, { opacity: opacityAnim, transform: [{ scale: scaleAnim }, { translateY: slideY }] }]}
         >
           <LinearGradient colors={['#1a1a3e', '#0d0d2e']} style={styles.modalInner}>
-            <Text style={styles.title}>GAME OVER</Text>
+            <Text style={styles.title}>{t('game.gameOver')}</Text>
 
             {isNewHighScore && (
               <Animated.View
@@ -135,25 +151,25 @@ const GameOverModal = memo(function GameOverModal({
                   style={styles.newHighScoreGrad}
                 >
                   <Feather name="star" size={14} color="#1a1a2e" />
-                  <Text style={styles.newHighScoreText}>NEW HIGH SCORE!</Text>
+                  <Text style={styles.newHighScoreText}>{t('game.newHighScore')}</Text>
                   <Feather name="star" size={14} color="#1a1a2e" />
                 </LinearGradient>
               </Animated.View>
             )}
 
             <View style={styles.scoreSection}>
-              <Text style={styles.scoreLabel}>FINAL SCORE</Text>
+              <Text style={styles.scoreLabel}>{t('game.finalScore')}</Text>
               <Text style={styles.finalScore}>{score.toLocaleString()}</Text>
-              <Text style={styles.bestLabel}>BEST: {highScore.toLocaleString()}</Text>
+              <Text style={styles.bestLabel}>{t('game.best')}: {highScore.toLocaleString()}</Text>
             </View>
 
             <View style={styles.statsRow}>
-              <StatBox label="LINES" value={linesCleared} icon="minus" />
-              <StatBox label="COMBO" value={`×${maxCombo}`} icon="zap" />
+              <StatBox label={t('home.lines')} value={linesCleared} icon="minus" />
+              <StatBox label={t('game.combo')} value={`×${maxCombo}`} icon="zap" />
             </View>
 
             <TouchableOpacity
-              onPress={onPlayAgain}
+              onPress={handlePlayAgainPress}
               style={styles.playAgainBtn}
               accessibilityLabel="Play again"
               accessibilityRole="button"
@@ -165,19 +181,19 @@ const GameOverModal = memo(function GameOverModal({
                 style={styles.playAgainGrad}
               >
                 <Feather name="refresh-cw" size={18} color="#fff" />
-                <Text style={styles.playAgainText}>PLAY AGAIN</Text>
+                <Text style={styles.playAgainText}>{t('game.playAgain')}</Text>
               </LinearGradient>
             </TouchableOpacity>
 
             <View style={styles.secondaryBtns}>
               <TouchableOpacity
-                onPress={onHome}
+                onPress={handleHomePress}
                 style={styles.secondaryBtn}
                 accessibilityLabel="Go to home"
                 accessibilityRole="button"
               >
                 <Feather name="home" size={18} color={COLORS.textSecondary} />
-                <Text style={styles.secondaryBtnText}>HOME</Text>
+                <Text style={styles.secondaryBtnText}>{t('game.home')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleShare}
@@ -186,7 +202,7 @@ const GameOverModal = memo(function GameOverModal({
                 accessibilityRole="button"
               >
                 <Feather name="share-2" size={18} color={COLORS.textSecondary} />
-                <Text style={styles.secondaryBtnText}>SHARE</Text>
+                <Text style={styles.secondaryBtnText}>{t('game.share')}</Text>
               </TouchableOpacity>
             </View>
           </LinearGradient>

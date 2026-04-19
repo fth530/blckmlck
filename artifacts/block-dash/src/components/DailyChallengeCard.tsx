@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../utils/constants';
+import { useTranslation } from '../hooks/useTranslation';
 import type { DailyChallenge, StreakData } from '../utils/types';
 
 interface DailyChallengeCardProps {
@@ -17,6 +18,7 @@ const TYPE_ICONS: Record<DailyChallenge['type'], React.ComponentProps<typeof Fea
 };
 
 export default function DailyChallengeCard({ challenge, streak }: DailyChallengeCardProps) {
+  const { t } = useTranslation();
   const progressAnim = useRef(new Animated.Value(0)).current;
   const ratio = Math.min(1, challenge.bestProgress / challenge.target);
 
@@ -41,7 +43,7 @@ export default function DailyChallengeCard({ challenge, streak }: DailyChallenge
       {/* Header row */}
       <View style={styles.headerRow}>
         <View style={styles.titleRow}>
-          <Text style={styles.dailyLabel}>DAILY CHALLENGE</Text>
+          <Text style={styles.dailyLabel}>{t('daily.title')}</Text>
           {/* Streak badge */}
           {streak.currentStreak > 0 && (
             <View style={styles.streakBadge}>
@@ -53,7 +55,7 @@ export default function DailyChallengeCard({ challenge, streak }: DailyChallenge
         {challenge.completed && (
           <View style={styles.completedBadge}>
             <Feather name="check-circle" size={14} color="#2ED573" />
-            <Text style={styles.completedText}>Done!</Text>
+            <Text style={styles.completedText}>{t('daily.done')}</Text>
           </View>
         )}
       </View>

@@ -42,6 +42,7 @@ import PowerUpTargetOverlay from "../components/PowerUpTargetOverlay";
 import TimerBar from "../components/TimerBar";
 import { saveGame } from "../utils/storage";
 import { useAchievements } from "../hooks/useAchievements";
+import { useTheme } from "../hooks/useTheme";
 import type { AchievementDef, PowerUpType } from "../utils/types";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -57,11 +58,12 @@ interface ScorePopup {
 export default function GameScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { state, level, canUndo, placePieceAction, usePowerUp, timeUp, confirmGameOver, clearLastLines, initGame, undo } =
+  const { state, level, canUndo, placePieceAction, usePowerUp, rotatePiece, timeUp, confirmGameOver, clearLastLines, initGame, undo } =
     useGame();
   const { trigger } = useHaptics();
   const { play } = useSounds();
   const { settings } = useSettings();
+  const theme = useTheme();
   const { recordGameResult } = useDailyChallenge();
   const { checkAchievements } = useAchievements();
   const [achQueue, setAchQueue] = useState<AchievementDef[]>([]);
@@ -104,6 +106,11 @@ export default function GameScreen() {
     onTriggerHaptic: trigger,
     onPlaySound: play,
     onDropPosition: (x, y) => { lastDropPos.current = { x, y }; },
+    onDoubleTap: (pieceIndex) => {
+      trigger("medium");
+      play("select");
+      rotatePiece(pieceIndex);
+    },
   });
 
   useEffect(() => {
@@ -112,6 +119,7 @@ export default function GameScreen() {
       recordGameResult(state.score, state.linesCleared, state.piecesPlaced).then(
         (outcome) => {
           if (outcome.challengeJustCompleted) {
+            trigger("success");
             play("challenge");
             setShowChallengeToast(true);
           }
@@ -125,7 +133,10 @@ export default function GameScreen() {
         level,
         highScore: state.highScore,
       }).then((newAchs) => {
-        if (newAchs.length > 0) setAchQueue(newAchs);
+        if (newAchs.length > 0) {
+          trigger("success");
+          setAchQueue(newAchs);
+        }
       });
       const t = setTimeout(() => {
         trigger("heavy");
@@ -196,17 +207,18 @@ export default function GameScreen() {
     }
   }, [state.lastClearedLines]);
 
-  // Timed mode: 1-second countdown interval
+  // Timed mode: 1-second countdown interval + haptic warning at 10s
   useEffect(() => {
     if (state.mode !== 'timed' || state.isGameOver || isPaused) return;
     const iv = setInterval(() => {
       setTimedSeconds((s) => {
         if (s <= 1) { timeUp(); return 0; }
+        if (s <= 11) trigger("error"); // haptic pulse in last 10 seconds
         return s - 1;
       });
     }, 1000);
     return () => clearInterval(iv);
-  }, [state.mode, state.isGameOver, isPaused, timeUp]);
+  }, [state.mode, state.isGameOver, isPaused, timeUp, trigger]);
 
   // Spawn floating score popup on each placement
   useEffect(() => {
@@ -247,6 +259,11 @@ export default function GameScreen() {
   const handleBack = useCallback(() => {
     router.replace("/");
   }, [router]);
+
+  const handlePowerUpSelect = useCallback((type: PowerUpType | null) => {
+    trigger("selection");
+    setPowerUpMode(type);
+  }, [trigger]);
 
   const handlePowerUpCell = useCallback((row: number, col: number) => {
     if (!powerUpMode) return;
@@ -301,7 +318,7 @@ export default function GameScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#0d0d1a", "#13132a", "#0d0d1a"]}
+        colors={theme.bgGradient}
         style={StyleSheet.absoluteFill}
       />
 
@@ -375,7 +392,7 @@ export default function GameScreen() {
       <PowerUpBar
         powerUps={state.powerUps}
         activeMode={powerUpMode}
-        onSelect={setPowerUpMode}
+        onSelect={handlePowerUpSelect}
       />
 
       <View style={styles.boardContainer}>
@@ -397,6 +414,9 @@ export default function GameScreen() {
               cellSize={boardDim / BOARD_SIZE}
               ghostCells={ghostCells}
               colorblind={settings.colorblind}
+              boardBg={theme.boardBg}
+              cellBorder={theme.cellBorder}
+              cellEmpty={theme.cellEmpty}
             />
             {powerUpMode && (
               <PowerUpTargetOverlay
@@ -409,7 +429,7 @@ export default function GameScreen() {
         </Animated.View>
       </View>
 
-      <View style={[styles.tray, { paddingBottom: paddingBottom + 12 }]}>
+      <View style={[styles.tray, { paddingBottom: paddingBottom + 12, backgroundColor: theme.trayBg }]}>
         {([0, 1, 2] as const).map((idx) => (
           <TraySlot
             key={idx}
@@ -443,6 +463,7 @@ export default function GameScreen() {
         visible={isPaused}
         onResume={handleResume}
         onHome={handlePauseHome}
+        onHaptic={trigger}
       />
 
       <GameOverModal
@@ -454,6 +475,7 @@ export default function GameScreen() {
         maxCombo={state.maxCombo}
         onPlayAgain={handlePlayAgain}
         onHome={handleHome}
+        onHaptic={trigger}
       />
     </View>
   );
