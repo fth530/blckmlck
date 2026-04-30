@@ -94,6 +94,27 @@ function buildGhost(
   return { cells, valid };
 }
 
+// Try exact position first, then ±1 cell in all directions for forgiving placement
+const SNAP_OFFSETS = [
+  [0, 0],
+  [0, 1], [0, -1], [1, 0], [-1, 0],
+  [1, 1], [1, -1], [-1, 1], [-1, -1],
+] as const;
+
+function findBestPlacement(
+  board: GameState["board"],
+  piece: Piece,
+  row: number,
+  col: number,
+): { row: number; col: number } | null {
+  for (const [dr, dc] of SNAP_OFFSETS) {
+    if (canPlacePiece(board, piece, row + dr, col + dc)) {
+      return { row: row + dr, col: col + dc };
+    }
+  }
+  return null;
+}
+
 export function useDragAndDrop({
   pieces,
   board,
@@ -132,7 +153,7 @@ export function useDragAndDrop({
   // Double-tap detection: track last tap per slot
   const lastTap = useRef<{ idx: number; time: number }>({ idx: -1, time: 0 });
   const DOUBLE_TAP_MS = 300;
-  const TAP_MOVE_THRESHOLD = 8;
+  const TAP_MOVE_THRESHOLD = 14;
   const piecesRef = useRef(pieces);
   useEffect(() => {
     piecesRef.current = pieces;
@@ -282,9 +303,9 @@ export function useDragAndDrop({
           }
 
           const { row, col } = coords;
-          const valid = canPlacePiece(boardRef.current, piece, row, col);
+          const best = findBestPlacement(boardRef.current, piece, row, col);
 
-          if (valid) {
+          if (best) {
             onTriggerHaptic("medium");
             onPlaySound("place");
             resetInstant(slotIdx);
@@ -293,13 +314,11 @@ export function useDragAndDrop({
             const cs = bw / BOARD_SIZE;
             const pCols = piece.shape[0].length;
             const pRows = piece.shape.length;
-            const particleX = bx + (col + pCols / 2) * cs;
-            const particleY = by + (row + pRows / 2) * cs;
+            const particleX = bx + (best.col + pCols / 2) * cs;
+            const particleY = by + (best.row + pRows / 2) * cs;
 
-            // Signal drop position before dispatch so GameScreen can pair it
-            // with the upcoming lastScore state update
             onDropPosition(particleX, particleY);
-            onPlacePiece(slotIdx, row, col);
+            onPlacePiece(slotIdx, best.row, best.col);
             const pid = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
             setParticles((prev) => [
               ...prev,

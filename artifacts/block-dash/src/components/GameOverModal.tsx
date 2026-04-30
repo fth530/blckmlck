@@ -106,7 +106,7 @@ const GameOverModal = memo(function GameOverModal({
     onHaptic?.('light');
     try {
       await Share.share({
-        message: `I scored ${score.toLocaleString()} points in Block Dash! Can you beat me? 🎮`,
+        message: `I scored ${score.toLocaleString()} points in Block Rush! Can you beat me? 🎮`,
       });
     } catch {}
   };

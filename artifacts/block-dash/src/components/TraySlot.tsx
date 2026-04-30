@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, Animated, PanResponder, StyleSheet } from "react-native";
 import BlockPiece from "./BlockPiece";
-import { TRAY_CELL_SIZE, ANIMATION_CONFIG } from "../utils/constants";
+import { ANIMATION_CONFIG } from "../utils/constants";
 import type { Piece } from "../utils/types";
 
 interface TraySlotProps {
@@ -13,11 +13,10 @@ interface TraySlotProps {
   isActive: boolean;
   slotIndex: number;
   isGameOver: boolean;
+  cellSize: number;
   colorblind?: boolean;
   reducedMotion?: boolean;
 }
-
-const SLOT_DIM = TRAY_CELL_SIZE * 5;
 
 // Shake: fast horizontal oscillation, staggered by slot index
 function runShake(anim: Animated.Value, delay: number) {
@@ -52,9 +51,11 @@ export default function TraySlot({
   isActive,
   slotIndex,
   isGameOver,
+  cellSize,
   colorblind = false,
   reducedMotion = false,
 }: TraySlotProps) {
+  const SLOT_DIM = cellSize * 5;
   const shakeX      = useRef(new Animated.Value(0)).current;
   const glowOp      = useRef(new Animated.Value(0)).current;
   const breatheAnim = useRef(new Animated.Value(1)).current;
@@ -172,7 +173,7 @@ export default function TraySlot({
             ]}
           >
             <View style={[styles.pieceCenter, { width: SLOT_DIM, height: SLOT_DIM }]}>
-              <BlockPiece piece={piece} cellSize={TRAY_CELL_SIZE} colorblind={colorblind} />
+              <BlockPiece piece={piece} cellSize={cellSize} colorblind={colorblind} />
             </View>
           </Animated.View>
         </>
@@ -187,9 +188,11 @@ const styles = StyleSheet.create({
   traySlot: {
     alignItems: "center",
     justifyContent: "center",
+    overflow: "visible",
   },
   draggable: {
     position: "absolute",
+    overflow: "visible",
   },
   dragShadow: {
     shadowColor: "#000",

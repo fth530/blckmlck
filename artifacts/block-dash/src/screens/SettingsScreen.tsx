@@ -156,7 +156,7 @@ export default function SettingsScreen() {
 
         <SectionHeader title={t('settings.about')} />
         <View style={styles.aboutBox}>
-          <Text style={styles.appName}>Block Dash</Text>
+          <Text style={styles.appName}>Block Rush</Text>
           <Text style={styles.version}>{t('settings.version')} 1.0.0</Text>
           <Text style={styles.aboutDesc}>
             A polished block puzzle game. Drop pieces to complete rows and columns.

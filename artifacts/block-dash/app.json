@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Block Dash",
-    "slug": "block-dash",
+    "name": "Block Rush",
+    "slug": "block-rush",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "block-dash",
+    "scheme": "block-rush",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.blockdash.app"
+      "bundleIdentifier": "com.blockrush.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -27,12 +27,7 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font"
     ],
     "experiments": {

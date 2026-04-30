@@ -20,7 +20,7 @@ const FloatingBlock = memo(function FloatingBlock({
 }: FloatingBlockProps) {
   const translateY = useRef(new Animated.Value(0)).current;
   const rotate = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0.3 + Math.random() * 0.3)).current;
+  const opacity = useRef(new Animated.Value(0.08 + Math.random() * 0.10)).current;
 
   const duration = 3000 + Math.random() * 3000;
   const distance = 20 + Math.random() * 30;

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
+  ScrollView,
   Dimensions,
   Platform,
 } from 'react-native';
@@ -173,7 +174,12 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.content, { paddingTop: paddingTop + 60 }]}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.content, { paddingTop: paddingTop + 60, paddingBottom: insets.bottom + 24 }]}
+        showsVerticalScrollIndicator={false}
+        bounces
+      >
         <Animated.View
           style={{
             opacity: titleOpacity,
@@ -196,7 +202,7 @@ export default function HomeScreen() {
             end={{ x: 1, y: 0 }}
             style={styles.titleGradient}
           >
-            <Text style={styles.title}>DASH</Text>
+            <Text style={styles.title}>RUSH</Text>
           </LinearGradient>
         </Animated.View>
 
@@ -328,7 +334,7 @@ export default function HomeScreen() {
             })}
           </View>
         </Animated.View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -379,8 +385,10 @@ const styles = StyleSheet.create({
   },
   coinEmoji: { fontSize: 14 },
   coinCount: { fontSize: 13, fontWeight: '800', color: '#FFD700' },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
     alignItems: 'center',
     paddingHorizontal: 24,
     gap: 24,

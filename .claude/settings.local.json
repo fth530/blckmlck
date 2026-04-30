@@ -8,7 +8,8 @@
       "Bash(ls -la src/hooks/)",
       "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
       "Bash(node \"c:\\\\Users\\\\ffati\\\\Desktop\\\\Block-Blast-Mania-1\\\\artifacts\\\\block-dash\\\\scripts\\\\generate-sounds.js\")",
-      "Bash(node scripts/generate-sounds.js)"
+      "Bash(node scripts/generate-sounds.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }
