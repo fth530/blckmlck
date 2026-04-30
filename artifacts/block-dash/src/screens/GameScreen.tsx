@@ -1,5 +1,5 @@
 /**
- * GameScreen — Block Dash main gameplay screen.
+ * GameScreen — Block Rush main gameplay screen.
  *
  * Layout and render responsibilities only. Drag-and-drop logic is in
  * useDragAndDrop hook, TraySlot component handles individual slot rendering.
@@ -10,16 +10,16 @@ import {
   View,
   Animated,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
-import { BOARD_SIZE, COLORS, TRAY_CELL_SIZE, SAVE_DEBOUNCE_MS, ANIMATION_CONFIG } from "../utils/constants";
+import { BOARD_SIZE, COLORS, SAVE_DEBOUNCE_MS, ANIMATION_CONFIG } from "../utils/constants";
 import { useGame } from "../context/GameContext";
 import { useSettings } from "../context/SettingsContext";
 import { useHaptics } from "../hooks/useHaptics";
@@ -40,12 +40,12 @@ import AchievementToast from "../components/AchievementToast";
 import PowerUpBar from "../components/PowerUpBar";
 import PowerUpTargetOverlay from "../components/PowerUpTargetOverlay";
 import TimerBar from "../components/TimerBar";
+import LineClearEffect from "../components/LineClearEffect";
 import { saveGame } from "../utils/storage";
 import { useAchievements } from "../hooks/useAchievements";
 import { useTheme } from "../hooks/useTheme";
 import type { AchievementDef, PowerUpType } from "../utils/types";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface ScorePopup {
   id: string;
@@ -57,6 +57,7 @@ interface ScorePopup {
 
 export default function GameScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const router = useRouter();
   const { state, level, canUndo, placePieceAction, usePowerUp, rotatePiece, timeUp, confirmGameOver, clearLastLines, initGame, undo } =
     useGame();
@@ -203,7 +204,6 @@ export default function GameScreen() {
       if (state.mode === 'timed' && total > 0) {
         setTimedSeconds((s) => s + total * TIMED_BONUS);
       }
-      clearLastLines();
     }
   }, [state.lastClearedLines]);
 
@@ -300,20 +300,14 @@ export default function GameScreen() {
   const paddingTop =
     Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const paddingBottom = Platform.OS === "web" ? 34 : insets.bottom;
+  const safeBottom = Math.max(paddingBottom, 16);
 
-  const trayHeight = TRAY_CELL_SIZE * 5 + 28;
-  const headerH = 72;
-  const comboH = 38;
-  const availH =
-    SCREEN_HEIGHT -
-    paddingTop -
-    headerH -
-    comboH -
-    trayHeight -
-    paddingBottom -
-    24;
-  const availW = SCREEN_WIDTH - 24;
-  const boardDim = Math.min(availW, availH);
+  // Tray piece size: 3.4% of screen height, clamped 20–30pt
+  const trayCellSize = Math.min(30, Math.max(20, Math.floor(screenH * 0.034)));
+
+  // Board cell size comes from the board's measured width (onLayout).
+  // Initialize from screenW so the first paint is already correct.
+  const [cellSize, setCellSize] = useState(() => (screenW - 24) / BOARD_SIZE);
 
   return (
     <View style={styles.container}>
@@ -397,22 +391,26 @@ export default function GameScreen() {
 
       <View style={styles.boardContainer}>
         <Animated.View
-          style={{
-            transform: [
-              { translateX: boardShakeX },
-              { scale: boardScale },
-            ],
-          }}
+          style={[
+            styles.boardWrapper,
+            { transform: [{ translateX: boardShakeX }, { scale: boardScale }] },
+          ]}
         >
           <View
             ref={boardViewRef}
-            onLayout={handleBoardLayout}
-            style={{ width: boardDim, height: boardDim }}
+            style={styles.boardWrapper}
+            onLayout={(e) => {
+              const w = e.nativeEvent.layout.width;
+              if (w > 0) setCellSize(w / BOARD_SIZE);
+              handleBoardLayout();
+            }}
           >
             <GameBoard
               board={state.board}
-              cellSize={boardDim / BOARD_SIZE}
+              cellSize={cellSize}
               ghostCells={ghostCells}
+              clearingRows={state.lastClearedLines?.rows ?? []}
+              clearingCols={state.lastClearedLines?.cols ?? []}
               colorblind={settings.colorblind}
               boardBg={theme.boardBg}
               cellBorder={theme.cellBorder}
@@ -420,16 +418,25 @@ export default function GameScreen() {
             />
             {powerUpMode && (
               <PowerUpTargetOverlay
-                cellSize={boardDim / BOARD_SIZE}
+                cellSize={cellSize}
                 mode={powerUpMode}
                 onCellPress={handlePowerUpCell}
+              />
+            )}
+            {state.lastClearedLines && (
+              <LineClearEffect
+                cells={state.lastClearedLines.cells}
+                cellSize={cellSize}
+                clearingRows={state.lastClearedLines.rows}
+                clearingCols={state.lastClearedLines.cols}
+                onDone={clearLastLines}
               />
             )}
           </View>
         </Animated.View>
       </View>
 
-      <View style={[styles.tray, { paddingBottom: paddingBottom + 12, backgroundColor: theme.trayBg }]}>
+      <View style={[styles.tray, { paddingBottom: safeBottom + 14, backgroundColor: theme.trayBg }]}>
         {([0, 1, 2] as const).map((idx) => (
           <TraySlot
             key={idx}
@@ -441,6 +448,7 @@ export default function GameScreen() {
             isActive={activePieceIdx === idx}
             slotIndex={idx}
             isGameOver={state.isGameOver}
+            cellSize={trayCellSize}
             colorblind={settings.colorblind}
             reducedMotion={settings.reducedMotion}
           />
@@ -521,18 +529,23 @@ const styles = StyleSheet.create({
   },
   boardContainer: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
     paddingHorizontal: 12,
+    paddingVertical: 4,
+    justifyContent: "center",
+  },
+  boardWrapper: {
+    width: "100%",
+    aspectRatio: 1,
   },
   tray: {
     flexDirection: "row",
     justifyContent: "space-evenly",
     alignItems: "center",
     paddingHorizontal: 8,
-    paddingTop: 14,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.07)",
     backgroundColor: "rgba(10,10,24,0.85)",
+    overflow: "visible",
   },
 });

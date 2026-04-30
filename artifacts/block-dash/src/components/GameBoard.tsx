@@ -37,6 +37,18 @@ const GameBoard = memo(function GameBoard({
   cellBorder = COLORS.cellBorder,
   cellEmpty = COLORS.cellEmpty,
 }: GameBoardProps) {
+  const prevBoardRef = useRef<typeof board>(board);
+  const newCellSet = useMemo(() => {
+    const s = new Set<string>();
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (board[r][c] && !prevBoardRef.current[r][c]) s.add(`${r},${c}`);
+      }
+    }
+    return s;
+  }, [board]);
+  useEffect(() => { prevBoardRef.current = board; }, [board]);
+
   const ghostMap = useMemo(() => {
     const m: Record<string, boolean> = {};
     for (const g of ghostCells) {
@@ -67,7 +79,7 @@ const GameBoard = memo(function GameBoard({
       const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(ghostPulse, {
-            toValue: 0.4,
+            toValue: 0.7,
             duration: ANIMATION_CONFIG.GHOST_PULSE_MS,
             useNativeDriver: true,
           }),
@@ -127,6 +139,7 @@ const GameBoard = memo(function GameBoard({
               isGhost={isGhost}
               ghostValid={ghostValid}
               isClearing={isClearing}
+              isNew={newCellSet.has(key)}
               cellSize={cs}
               innerSize={inner}
               colorblind={colorblind}
@@ -150,6 +163,7 @@ interface CellProps {
   isGhost: boolean;
   ghostValid: boolean | undefined;
   isClearing: boolean;
+  isNew: boolean;
   cellSize: number;
   innerSize: number;
   colorblind: boolean;
@@ -159,9 +173,25 @@ interface CellProps {
 }
 
 const Cell = memo(function Cell({
-  r, c, color, isGhost, ghostValid, isClearing, cellSize, innerSize, colorblind, ghostPulse, themeCellEmpty, themeCellBorder,
+  r, c, color, isGhost, ghostValid, isClearing, isNew, cellSize, innerSize, colorblind, ghostPulse, themeCellEmpty, themeCellBorder,
 }: CellProps) {
   const flashAnim = useRef(new Animated.Value(1)).current;
+  const stampAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (isNew) {
+      stampAnim.setValue(0.6);
+      Animated.sequence([
+        Animated.delay((r + c) * 10),
+        Animated.spring(stampAnim, {
+          toValue: 1,
+          damping: 7,
+          stiffness: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isNew]);
 
   useEffect(() => {
     if (isClearing) {
@@ -234,19 +264,23 @@ const Cell = memo(function Cell({
 
   if (displayColor) {
     return (
-      <LinearGradient
+      <Animated.View
         accessible
         accessibilityLabel={a11yLabel}
-        colors={displayColor.gradient as [string, string]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[baseStyle, styles.filledCell]}
+        style={[baseStyle, { transform: [{ scale: stampAnim }] }]}
       >
-        <View style={[styles.innerHighlight, { borderRadius: Math.max(2, radius - 2) }]} />
-        {pattern && (
-          <Text style={[styles.pattern, { fontSize: patternSize }]}>{pattern}</Text>
-        )}
-      </LinearGradient>
+        <LinearGradient
+          colors={displayColor.gradient as [string, string]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1, borderRadius: radius, overflow: 'hidden' }}
+        >
+          <View style={[styles.innerHighlight, { borderRadius: Math.max(2, radius - 2) }]} />
+          {pattern && (
+            <Text style={[styles.pattern, { fontSize: patternSize }]}>{pattern}</Text>
+          )}
+        </LinearGradient>
+      </Animated.View>
     );
   }
 
@@ -260,10 +294,14 @@ const Cell = memo(function Cell({
           {
             opacity: ghostPulse,
             backgroundColor: ghostValid
-              ? 'rgba(46,213,115,0.38)'
-              : 'rgba(255,107,107,0.32)',
-            borderWidth: 1.5,
-            borderColor: ghostValid ? '#2ED573' : '#FF6B6B',
+              ? 'rgba(46,213,115,0.55)'
+              : 'rgba(255,55,55,0.72)',
+            borderWidth: 2,
+            borderColor: ghostValid ? '#2ED573' : '#FF2222',
+            shadowColor: ghostValid ? '#2ED573' : '#FF2222',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: ghostValid ? 0 : 0.8,
+            shadowRadius: 4,
           },
         ]}
       />
@@ -290,6 +328,7 @@ const Cell = memo(function Cell({
   if (prev.isGhost !== next.isGhost) return false;
   if (prev.ghostValid !== next.ghostValid) return false;
   if (prev.color !== next.color) return false;
+  if (prev.isNew !== next.isNew) return false;
   if (prev.cellSize !== next.cellSize) return false;
   if (prev.colorblind !== next.colorblind) return false;
   return true;

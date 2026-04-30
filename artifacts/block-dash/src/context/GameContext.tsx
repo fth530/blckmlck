@@ -17,6 +17,7 @@ import {
   rotateShape,
 } from '../utils/gameHelpers';
 import { getThreeRandomPieces, getSmartPieces } from '../utils/pieces';
+import { BOARD_SIZE } from '../utils/constants';
 import { updateStats, saveGame, clearSavedGame, addGameToHistory, addCoins } from '../utils/storage';
 import type { GameHistoryEntry } from '../utils/types';
 
@@ -39,7 +40,12 @@ export interface GameState {
   mode: GameMode;
   isGameOver: boolean;
   isNewHighScore: boolean;
-  lastClearedLines: { rows: number[]; cols: number[] } | null;
+  lastClearedLines: {
+    rows: number[];
+    cols: number[];
+    /** Cell colors captured BEFORE the board is cleared — used by LineClearEffect */
+    cells: { row: number; col: number; gradient: string[] }[];
+  } | null;
   lastScore: number;
   /** One-level undo snapshot. Null when no move has been made yet. */
   previousState: GameSnapshot | null;
@@ -139,6 +145,26 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       const { completedRows, completedCols } = findCompletedLines(newBoard);
       const hasClears = completedRows.length > 0 || completedCols.length > 0;
 
+      // Capture cell colors BEFORE clearing so LineClearEffect can animate them
+      const clearedCells: { row: number; col: number; gradient: string[] }[] = [];
+      if (hasClears) {
+        const rowSet = new Set(completedRows);
+        const colSet = new Set(completedCols);
+        for (const r of completedRows) {
+          for (let c = 0; c < BOARD_SIZE; c++) {
+            const cell = newBoard[r][c];
+            if (cell) clearedCells.push({ row: r, col: c, gradient: cell.gradient });
+          }
+        }
+        for (const c of completedCols) {
+          for (let r = 0; r < BOARD_SIZE; r++) {
+            if (rowSet.has(r)) continue; // already captured above
+            const cell = newBoard[r][c];
+            if (cell) clearedCells.push({ row: r, col: c, gradient: cell.gradient });
+          }
+        }
+      }
+
       const newCombo = hasClears ? state.comboCount + 1 : 0;
       const scoreGained = calculateScore(blockCount, completedRows, completedCols, newCombo);
 
@@ -183,6 +209,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       return {
+        ...state,
         board: clearedBoard,
         pieces: finalPieces,
         score: newScore,
@@ -195,7 +222,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         powerUpCharge: newCharge,
         isGameOver,
         isNewHighScore,
-        lastClearedLines: hasClears ? { rows: completedRows, cols: completedCols } : null,
+        lastClearedLines: hasClears ? { rows: completedRows, cols: completedCols, cells: clearedCells } : null,
         lastScore: scoreGained,
         previousState: savedSnapshot,
       };
@@ -209,10 +236,29 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       else if (powerUp === 'sweep')  newBoard = applySweep(state.board, row, col);
       else                           newBoard = applyEraser(state.board, row, col);
 
-      const newPowerUps = { ...state.powerUps, [powerUp]: state.powerUps[powerUp] - 1 };
-      const isGameOver = !canAnyPieceFit(newBoard, state.pieces);
+      const { completedRows, completedCols } = findCompletedLines(newBoard);
+      const hasClears = completedRows.length > 0 || completedCols.length > 0;
+      const clearedBoard = hasClears ? clearLines(newBoard, completedRows, completedCols) : newBoard;
+      const scoreGained = hasClears
+        ? calculateScore(0, completedRows, completedCols, state.comboCount)
+        : 0;
+      const newScore = state.score + scoreGained;
+      const newHighScore = Math.max(state.highScore, newScore);
 
-      return { ...state, board: newBoard, powerUps: newPowerUps, isGameOver };
+      const newPowerUps = { ...state.powerUps, [powerUp]: state.powerUps[powerUp] - 1 };
+      const isGameOver = state.mode === 'zen' ? false : !canAnyPieceFit(clearedBoard, state.pieces);
+
+      return {
+        ...state,
+        board: clearedBoard,
+        powerUps: newPowerUps,
+        score: newScore,
+        highScore: newHighScore,
+        isNewHighScore: newHighScore > state.highScore,
+        isGameOver,
+        lastClearedLines: hasClears ? { rows: completedRows, cols: completedCols, cells: [] } : null,
+        lastScore: scoreGained,
+      };
     }
     case 'ROTATE_PIECE': {
       const { pieceIndex } = action;
